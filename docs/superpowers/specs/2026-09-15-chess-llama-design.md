@@ -1,6 +1,6 @@
 # Chess Llama Architecture Design
 
-**Status:** Approved in design discussion; awaiting review of this written specification  
+**Status:** Approved
 **Date:** 2026-09-15  
 **License:** GPL-3.0
 
@@ -176,6 +176,7 @@ GET  /api/games
 GET  /api/games/:id
 POST /api/games/:id/moves
 POST /api/games/:id/moves/ai
+POST /api/games/:id/resign
 GET  /api/games/:id/pgn
 ```
 
@@ -189,7 +190,6 @@ GET  /api/games/:id/pgn
 {
   "from": "e2",
   "to": "e4",
-  "promotion": "q",
   "expectedPly": 0
 }
 ```
@@ -197,6 +197,8 @@ GET  /api/games/:id/pgn
 `promotion` is omitted except for a promotion move. The request persists the human move and attempts the following AI turn before responding. If AI inference fails, the response describes the saved `awaiting_ai` state and supplies the retry action.
 
 `POST /api/games/:id/moves/ai` accepts `{ "expectedPly": 1 }` and is valid only when the persisted state is `awaiting_ai` and it is the AI's turn.
+
+`POST /api/games/:id/resign` accepts `{ "expectedPly": 12 }`, completes an active game with the opponent as winner, and returns HTTP 409 when the expected ply is stale or the game is already completed.
 
 Mutating endpoints return the complete game view, including moves, current FEN, status, result, last AI commentary, and non-sensitive inference metrics. A stale `expectedPly` returns HTTP 409.
 
