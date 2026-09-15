@@ -14,6 +14,8 @@ const require = createRequire(import.meta.url);
 const ENGINE_PATH =
   require.resolve('stockfish/bin/stockfish-18-lite-single.js');
 
+type PendingWait = Promise<void> & { cancel: () => void };
+
 export class StockfishJsAnalyzer implements StockfishAnalyzer {
   private child: ChildProcessWithoutNullStreams | null = null;
   private lines: Interface | null = null;
@@ -80,10 +82,12 @@ export class StockfishJsAnalyzer implements StockfishAnalyzer {
     });
 
     try {
-      await this.send('uci');
-      await this.waitFor((line) => line.trim() === 'uciok', 10_000);
-      await this.send('isready');
-      await this.waitFor((line) => line.trim() === 'readyok', 10_000);
+      await this.sendAndWait('uci', (line) => line.trim() === 'uciok', 10_000);
+      await this.sendAndWait(
+        'isready',
+        (line) => line.trim() === 'readyok',
+        10_000,
+      );
     } catch (error) {
       if (this.child === child) this.killProcess();
       throw error;
@@ -114,14 +118,21 @@ export class StockfishJsAnalyzer implements StockfishAnalyzer {
       const lines: string[] = [];
       await this.send(`setoption name MultiPV value ${request.candidateLimit}`);
       await this.send(`position fen ${request.fen}`);
-      await this.send(`go movetime ${Math.max(1, request.moveTimeMs)}`);
-      await this.waitFor(
+      const bestMove = this.waitFor(
         (line) => {
           if (line.startsWith('info ')) lines.push(line);
           return line.trim().startsWith('bestmove ');
         },
         Math.max(5_000, request.moveTimeMs + 5_000),
       );
+      try {
+        await this.send(`go movetime ${Math.max(1, request.moveTimeMs)}`);
+        await bestMove;
+      } catch (error) {
+        bestMove.cancel();
+        await bestMove.catch(() => undefined);
+        throw error;
+      }
 
       if (request.signal?.aborted) {
         throw new DOMException('Aborted', 'AbortError');
@@ -163,6 +174,22 @@ export class StockfishJsAnalyzer implements StockfishAnalyzer {
     const write = this.stdinReady.then(() => this.writeCommand(child, command));
     this.stdinReady = write.catch(() => undefined);
     return write;
+  }
+
+  private async sendAndWait(
+    command: string,
+    predicate: (line: string) => boolean,
+    timeoutMs: number,
+  ): Promise<void> {
+    const response = this.waitFor(predicate, timeoutMs);
+    try {
+      await this.send(command);
+      await response;
+    } catch (error) {
+      response.cancel();
+      await response.catch(() => undefined);
+      throw error;
+    }
   }
 
   private writeCommand(
@@ -222,8 +249,12 @@ export class StockfishJsAnalyzer implements StockfishAnalyzer {
     });
   }
 
-  private waitFor(predicate: (line: string) => boolean, timeoutMs: number) {
-    return new Promise<void>((resolve, reject) => {
+  private waitFor(
+    predicate: (line: string) => boolean,
+    timeoutMs: number,
+  ): PendingWait {
+    let cancel!: () => void;
+    const pending = new Promise<void>((resolve, reject) => {
       const listener = (line: string) => {
         if (!predicate(line)) return;
         cleanup();
@@ -242,9 +273,14 @@ export class StockfishJsAnalyzer implements StockfishAnalyzer {
         this.lineListeners.delete(listener);
         this.errorListeners.delete(onError);
       };
+      cancel = () => {
+        cleanup();
+        reject(new Error('Stockfish response wait cancelled'));
+      };
       this.lineListeners.add(listener);
       this.errorListeners.add(onError);
     });
+    return Object.assign(pending, { cancel });
   }
 
   private emitError(error: Error): void {
