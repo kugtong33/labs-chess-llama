@@ -67,6 +67,55 @@ describe('GatewayClient', () => {
     );
   });
 
+  it('turns response-body transport failures into a typed connection error', async () => {
+    const body = new ReadableStream({
+      start(controller) {
+        controller.error(new TypeError('socket reset'));
+      },
+    });
+    const client = new GatewayClient('http://127.0.0.1:3001', () =>
+      Promise.resolve(
+        new Response(body, {
+          headers: { 'content-type': 'application/json' },
+        }),
+      ),
+    );
+
+    await expect(client.listGames()).rejects.toBeInstanceOf(
+      GatewayConnectionError,
+    );
+  });
+
+  it('does not swallow cancellation while reading a problem body', async () => {
+    const controller = new AbortController();
+    const reason = new DOMException('navigation', 'AbortError');
+    const client = new GatewayClient('http://127.0.0.1:3001', (_input, init) =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream({
+            start(stream) {
+              init?.signal?.addEventListener(
+                'abort',
+                () => stream.error(init.signal?.reason),
+                { once: true },
+              );
+            },
+          }),
+          { status: 503 },
+        ),
+      ),
+    );
+
+    const pending = client.retryAiMove(
+      game.id,
+      { expectedPly: 1 },
+      controller.signal,
+    );
+    controller.abort(reason);
+
+    await expect(pending).rejects.toBe(reason);
+  });
+
   it('downloads PGN as a blob with a safe filename', async () => {
     const client = new GatewayClient('http://127.0.0.1:3001', () =>
       Promise.resolve(
@@ -80,6 +129,23 @@ describe('GatewayClient', () => {
     const download = await client.getPgn(game.id);
     expect(download.filename).toBe('game-1.pgn');
     expect(await download.blob.text()).toBe('1. e4 *');
+  });
+
+  it('sanitizes the PGN fallback when the response filename is invalid', async () => {
+    const client = new GatewayClient('http://127.0.0.1:3001', () =>
+      Promise.resolve(
+        new Response('1. e4 *', {
+          headers: {
+            'content-disposition': 'attachment; filename="not-a-pgn.txt"',
+          },
+        }),
+      ),
+    );
+
+    const download = await client.getPgn('../../evil');
+
+    expect(download.filename).toBe('chess-llama-evil.pgn');
+    expect(download.filename).not.toMatch(/[\\/]/u);
   });
 
   it('uses every approved gateway route and HTTP method', async () => {

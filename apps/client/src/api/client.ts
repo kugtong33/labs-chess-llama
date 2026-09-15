@@ -201,12 +201,12 @@ export class GatewayClient implements GatewayApi {
       `/api/games/${encodeURIComponent(id)}/pgn`,
       { signal },
     );
-    if (!response.ok) await throwProblem(response);
+    if (!response.ok) await throwProblem(response, signal);
     return {
-      blob: await response.blob(),
+      blob: await readBlob(response, signal),
       filename: pgnFilename(
         response.headers.get('content-disposition'),
-        `chess-llama-${id}.pgn`,
+        fallbackPgnFilename(id),
       ),
     };
   }
@@ -221,8 +221,8 @@ export class GatewayClient implements GatewayApi {
       headers.set('content-type', 'application/json');
     headers.set('accept', 'application/json');
     const response = await this.#request(path, { ...init, headers });
-    if (!response.ok) await throwProblem(response);
-    return schema.parse(await response.json());
+    if (!response.ok) await throwProblem(response, init.signal);
+    return schema.parse(await readJson(response, init.signal));
   }
 
   async #request(path: string, init: RequestInit): Promise<Response> {
@@ -235,8 +235,11 @@ export class GatewayClient implements GatewayApi {
   }
 }
 
-async function throwProblem(response: Response): Promise<never> {
-  const body: unknown = await response.json().catch(() => undefined);
+async function throwProblem(
+  response: Response,
+  signal?: AbortSignal | null,
+): Promise<never> {
+  const body = await readJson(response, signal);
   const parsed = ProblemDetailsSchema.safeParse(body);
   if (parsed.success) throw new GatewayProblemError(parsed.data);
   throw new GatewayResponseError(
@@ -244,12 +247,56 @@ async function throwProblem(response: Response): Promise<never> {
   );
 }
 
+async function readJson(
+  response: Response,
+  signal?: AbortSignal | null,
+): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch (error) {
+    throwBodyReadError(error, signal, 'Gateway returned invalid JSON');
+  }
+}
+
+async function readBlob(
+  response: Response,
+  signal?: AbortSignal | null,
+): Promise<Blob> {
+  try {
+    return await response.blob();
+  } catch (error) {
+    throwBodyReadError(error, signal, 'Gateway returned an invalid PGN body');
+  }
+}
+
+function throwBodyReadError(
+  error: unknown,
+  signal: AbortSignal | null | undefined,
+  invalidMessage: string,
+): never {
+  if (signal?.aborted) throw signal.reason ?? error;
+  if (error instanceof SyntaxError) {
+    throw new GatewayResponseError(invalidMessage, { cause: error });
+  }
+  throw new GatewayConnectionError(undefined, { cause: error });
+}
+
 function pgnFilename(header: string | null, fallback: string): string {
   const match = header?.match(/filename\s*=\s*(?:"([^"]+)"|([^;\s]+))/iu);
   const proposed = match?.[1] ?? match?.[2] ?? fallback;
-  const safe = proposed
+  const safe = safeFilename(proposed);
+  return safe?.toLowerCase().endsWith('.pgn') ? safe : fallback;
+}
+
+function fallbackPgnFilename(id: string): string {
+  const segment = id.split(/[\\/]/u).at(-1) ?? '';
+  const safeId = segment.replace(/[^a-z0-9_-]/giu, '_');
+  return `chess-llama-${safeId || 'game'}.pgn`;
+}
+
+function safeFilename(value: string): string | undefined {
+  return value
     .split(/[\\/]/u)
     .at(-1)
     ?.replace(/[^a-z0-9._-]/giu, '_');
-  return safe && safe.toLowerCase().endsWith('.pgn') ? safe : fallback;
 }
