@@ -1,5 +1,5 @@
 import { QueryClientProvider, type QueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { lazy, Suspense, useState, type ReactNode } from 'react';
 import {
   createBrowserRouter,
   createMemoryRouter,
@@ -10,6 +10,20 @@ import {
 import type { GatewayApi } from './api/client.js';
 import { createGatewayQueryClient, GatewayProvider } from './api/queries.js';
 import { Layout } from './components/layout.js';
+
+const PlayRoute = lazy(() =>
+  import('./routes/play.js').then((module) => ({ default: module.PlayRoute })),
+);
+const HistoryRoute = lazy(() =>
+  import('./routes/history.js').then((module) => ({
+    default: module.HistoryRoute,
+  })),
+);
+const SettingsRoute = lazy(() =>
+  import('./routes/settings.js').then((module) => ({
+    default: module.SettingsRoute,
+  })),
+);
 
 export interface AppProps {
   gateway: GatewayApi;
@@ -22,10 +36,10 @@ const routes: RouteObject[] = [
     path: '/',
     element: <Layout />,
     children: [
-      { index: true, element: <PlayPlaceholder /> },
-      { path: 'games/:id', element: <PlayPlaceholder /> },
-      { path: 'history', element: <RoutePlaceholder title="History" /> },
-      { path: 'settings', element: <RoutePlaceholder title="Settings" /> },
+      { index: true, element: route(<PlayRoute />) },
+      { path: 'games/:id', element: route(<PlayRoute />) },
+      { path: 'history', element: route(<HistoryRoute />) },
+      { path: 'settings', element: route(<SettingsRoute />) },
     ],
   },
 ];
@@ -47,32 +61,10 @@ export function App({ gateway, initialEntries, queryClient }: AppProps) {
   );
 }
 
-function PlayPlaceholder() {
+function route(element: ReactNode) {
   return (
-    <section className="hero" aria-labelledby="play-title">
-      <p className="eyebrow">Your machine. Your model. Your move.</p>
-      <h1 id="play-title">Play chess with a local language model.</h1>
-      <p className="hero-copy">
-        Stockfish finds credible candidates. llama.cpp chooses a move and tells
-        you why—without sending your game anywhere.
-      </p>
-      <div className="architecture-card" aria-label="Hybrid AI architecture">
-        <span>Position</span>
-        <span aria-hidden="true">→</span>
-        <span>Stockfish shortlist</span>
-        <span aria-hidden="true">→</span>
-        <span>llama.cpp choice</span>
-      </div>
-    </section>
-  );
-}
-
-function RoutePlaceholder({ title }: { title: string }) {
-  return (
-    <section className="route-placeholder">
-      <p className="eyebrow">Local game workspace</p>
-      <h1>{title}</h1>
-      <p>This workspace is ready for your persisted local chess data.</p>
-    </section>
+    <Suspense fallback={<p role="status">Loading workspace…</p>}>
+      {element}
+    </Suspense>
   );
 }

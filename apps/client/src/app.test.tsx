@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
 import '@testing-library/jest-dom/vitest';
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import type { GatewayApi } from './api/client.js';
 import { App } from './app.js';
@@ -28,17 +28,28 @@ function createFakeGateway(): GatewayApi {
   const unused = () => Promise.reject(new Error('not used by shell test'));
   return {
     health: () => Promise.resolve(health),
-    listGames: unused,
+    listGames: () => Promise.resolve([]),
     getGame: unused,
     createGame: unused,
     submitHumanMove: unused,
     retryAiMove: unused,
     resignGame: unused,
-    getSettings: unused,
+    getSettings: () =>
+      Promise.resolve({
+        preferredHumanColor: 'white',
+        boardOrientation: 'white',
+        theme: 'system',
+        commentaryStyle: 'concise',
+        modelProfileId: 'qwen3-4b-q4-k-m',
+        stockfishCandidateLimit: 5,
+        stockfishMoveTimeMs: 100,
+      }),
     updateSettings: unused,
     getPgn: unused,
   };
 }
+
+afterEach(cleanup);
 
 describe('App', () => {
   it('renders navigation and degraded runtime guidance', async () => {
