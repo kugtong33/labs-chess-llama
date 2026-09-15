@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto';
 import {
   applyHumanMove,
   applyUciMove,
-  deriveGameResult,
   legalMoves,
   reconstructGame,
   type UciMove,
@@ -85,20 +84,22 @@ export class GameService {
           { cause: error },
         );
       }
-      game = this.dependencies.games.recordHumanMove(id, {
-        id: randomUUID(),
-        ply: game.moves.length + 1,
-        color: applied.color,
-        actor: 'human',
-        uci: applied.uci,
-        san: applied.san,
-        fenAfter: applied.fenAfter,
-        pgnAfter: applied.pgnAfter,
-      });
+      game = this.dependencies.games.recordHumanMove(
+        id,
+        {
+          id: randomUUID(),
+          ply: game.moves.length + 1,
+          color: applied.color,
+          actor: 'human',
+          uci: applied.uci,
+          san: applied.san,
+          fenAfter: applied.fenAfter,
+          pgnAfter: applied.pgnAfter,
+        },
+        applied.gameOver ? applied.result : undefined,
+      );
       if (applied.gameOver) {
-        return toGameView(
-          this.dependencies.games.markCompleted(id, applied.result),
-        );
+        return toGameView(game);
       }
       const result = await this.performAiTurn(id, game.moves.length, signal);
       return toGameView(result);
@@ -218,10 +219,7 @@ export class GameService {
         maxLossCp: 150,
         signal,
       });
-      const legalByUci = new Map(legal.map((move) => [move.uci, move]));
-      const validCandidates = candidates
-        .filter((candidate) => legalByUci.has(candidate.uci))
-        .slice(0, 5);
+      const validCandidates = candidates.slice(0, 5);
       if (validCandidates.length === 0)
         throw new Error('Stockfish returned no legal candidates');
       const selection = await this.dependencies.selector.selectMove({
@@ -285,10 +283,9 @@ export class GameService {
           tokensPerSecond: selection.tokensPerSecond,
           retryCount: selection.retryCount,
         },
+        applied.gameOver ? applied.result : undefined,
       );
-      return applied.gameOver
-        ? this.dependencies.games.markCompleted(id, deriveGameResult(after))
-        : game;
+      return game;
     } catch (error) {
       if (error instanceof GameServiceError && error.code === 'AI_INVALID_MOVE')
         throw error;

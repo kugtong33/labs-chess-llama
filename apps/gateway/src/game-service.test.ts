@@ -67,7 +67,11 @@ class MemoryGames implements GameRepository {
     return [...this.records.values()].map((game) => this.copy(game));
   }
 
-  recordHumanMove(gameId: string, move: PersistableMove): GameAggregate {
+  recordHumanMove(
+    gameId: string,
+    move: PersistableMove,
+    result?: GameResult,
+  ): GameAggregate {
     this.events.push(`record-human:${move.uci}`);
     const game = this.getRequired(gameId);
     game.moves.push({
@@ -77,9 +81,11 @@ class MemoryGames implements GameRepository {
     });
     game.currentFen = move.fenAfter;
     game.pgn = move.pgnAfter;
-    game.status = 'awaiting_ai';
+    game.status = result === undefined ? 'awaiting_ai' : 'completed';
     game.updatedAt = Date.now();
-    game.result = '*';
+    game.result = result ?? '*';
+    game.completedAt = result === undefined ? null : Date.now();
+    if (result !== undefined) game.pgn = `${move.pgnAfter} ${result}`;
     this.records.set(gameId, game);
     return this.copy(game);
   }
@@ -88,6 +94,7 @@ class MemoryGames implements GameRepository {
     gameId: string,
     move: PersistableMove,
     decision: PersistableAiDecision,
+    result?: GameResult,
   ): GameAggregate {
     this.events.push(`record-ai:${move.uci}`);
     const game = this.getRequired(gameId);
@@ -114,9 +121,11 @@ class MemoryGames implements GameRepository {
     });
     game.currentFen = move.fenAfter;
     game.pgn = move.pgnAfter;
-    game.status = 'active';
+    game.status = result === undefined ? 'active' : 'completed';
     game.updatedAt = Date.now();
-    game.result = '*';
+    game.result = result ?? '*';
+    game.completedAt = result === undefined ? null : Date.now();
+    if (result !== undefined) game.pgn = `${move.pgnAfter} ${result}`;
     game.lastAiDecision = storedDecision;
     this.records.set(gameId, game);
     return this.copy(game);
@@ -126,6 +135,8 @@ class MemoryGames implements GameRepository {
     const game = this.getRequired(gameId);
     game.status = 'completed';
     game.result = result;
+    game.pgn = game.pgn.replace(/(?:1-0|0-1|1\/2-1\/2|\*)\s*$/, '').trim();
+    game.pgn = game.pgn.length === 0 ? result : `${game.pgn} ${result}`;
     game.completedAt = Date.now();
     game.updatedAt = Date.now();
     this.records.set(gameId, game);
@@ -232,12 +243,22 @@ class FakeSelector implements MoveSelector {
 }
 
 function createServiceHarness(
-  options: { selectedUci?: string; selectError?: Error } = {},
+  options: {
+    selectedUci?: string;
+    selectError?: Error;
+    candidateUcis?: string[];
+  } = {},
 ) {
   const events: string[] = [];
   const games = new MemoryGames(events);
   const stockfish = new FakeStockfish(
-    [
+    options.candidateUcis?.map((uci, index) => ({
+      rank: index + 1,
+      uci,
+      san: uci,
+      score: { type: 'cp' as const, value: 20 - index * 10 },
+      normalizedScore: 20 - index * 10,
+    })) ?? [
       {
         rank: 1,
         uci: 'e7e5',
@@ -358,6 +379,27 @@ describe('GameService', () => {
     expect(harness.games.getRequired(game.id).status).toBe('awaiting_ai');
   });
 
+  it('domain-validates a shortlisted model move before persistence', async () => {
+    const harness = createServiceHarness({
+      selectedUci: 'e1e2',
+      candidateUcis: ['e1e2'],
+    });
+    const game = await harness.service.createGame({ humanColor: 'white' });
+    await expect(
+      harness.service.submitHumanMove(game.id, {
+        from: 'e2',
+        to: 'e4',
+        expectedPly: 0,
+      }),
+    ).rejects.toMatchObject({
+      code: 'AI_INVALID_MOVE',
+      gameStatus: 'awaiting_ai',
+    });
+    expect(
+      harness.games.getRequired(game.id).moves.map((move) => move.uci),
+    ).toEqual(['e2e4']);
+  });
+
   it('rechecks the ply after serializing duplicate concurrent requests', async () => {
     const harness = createServiceHarness();
     const game = await harness.service.createGame({ humanColor: 'white' });
@@ -410,6 +452,14 @@ describe('GameService', () => {
         expectedPly: 0,
       }),
     ).rejects.toMatchObject({ code: 'GAME_COMPLETED' });
+  });
+
+  it('exports a resigned game with its single result marker', async () => {
+    const harness = createServiceHarness();
+    const game = await harness.service.createGame({ humanColor: 'white' });
+    const resigned = await harness.service.resignGame(game.id, 0);
+    expect(resigned.status).toBe('completed');
+    expect(await harness.service.exportPgn(game.id)).toBe('0-1');
   });
 
   it('reports a cancelled AI operation as recoverable and releases its lock', async () => {

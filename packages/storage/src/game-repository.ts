@@ -28,11 +28,16 @@ export interface GameRepository {
   get(id: string): GameAggregate | null;
   getRequired(id: string): GameAggregate;
   list(): GameAggregate[];
-  recordHumanMove(gameId: string, move: PersistableMove): GameAggregate;
+  recordHumanMove(
+    gameId: string,
+    move: PersistableMove,
+    result?: GameResult,
+  ): GameAggregate;
   recordAiMove(
     gameId: string,
     move: PersistableMove,
     decision: PersistableAiDecision,
+    result?: GameResult,
   ): GameAggregate;
   markCompleted(gameId: string, result: GameResult): GameAggregate;
 }
@@ -163,8 +168,10 @@ export function createGameRepository(db: SqliteDatabase): GameRepository {
       ).map(readAggregate);
     },
 
-    recordHumanMove(gameId, move) {
+    recordHumanMove(gameId, move, result) {
       validateMove(move, 'human');
+      const terminalResult =
+        result === undefined ? null : GameResultSchema.parse(result);
       return transaction(() => {
         const game = getRequiredRow(gameId);
         ensureOpen(game);
@@ -172,17 +179,29 @@ export function createGameRepository(db: SqliteDatabase): GameRepository {
         insertMove(gameId, move, now);
         db.prepare(
           `UPDATE games
-           SET current_fen = ?, pgn = ?, status = 'awaiting_ai', result = '*',
-               updated_at = ?, completed_at = NULL
+           SET current_fen = ?, pgn = ?, status = ?, result = ?,
+               updated_at = ?, completed_at = ?
            WHERE id = ?`,
-        ).run(move.fenAfter, move.pgnAfter, now, gameId);
+        ).run(
+          move.fenAfter,
+          terminalResult === null
+            ? move.pgnAfter
+            : pgnWithResult(move.pgnAfter, terminalResult),
+          terminalResult === null ? 'awaiting_ai' : 'completed',
+          terminalResult ?? '*',
+          now,
+          terminalResult === null ? null : now,
+          gameId,
+        );
         return readAggregate(getRequiredRow(gameId));
       });
     },
 
-    recordAiMove(gameId, move, decision) {
+    recordAiMove(gameId, move, decision, result) {
       validateMove(move, 'llm');
       const validatedDecision = validateDecision(decision, move.id);
+      const terminalResult =
+        result === undefined ? null : GameResultSchema.parse(result);
       return transaction(() => {
         const game = getRequiredRow(gameId);
         ensureOpen(game);
@@ -213,10 +232,20 @@ export function createGameRepository(db: SqliteDatabase): GameRepository {
         );
         db.prepare(
           `UPDATE games
-           SET current_fen = ?, pgn = ?, status = 'active', result = '*',
-               updated_at = ?, completed_at = NULL
+           SET current_fen = ?, pgn = ?, status = ?, result = ?,
+               updated_at = ?, completed_at = ?
            WHERE id = ?`,
-        ).run(move.fenAfter, move.pgnAfter, now, gameId);
+        ).run(
+          move.fenAfter,
+          terminalResult === null
+            ? move.pgnAfter
+            : pgnWithResult(move.pgnAfter, terminalResult),
+          terminalResult === null ? 'active' : 'completed',
+          terminalResult ?? '*',
+          now,
+          terminalResult === null ? null : now,
+          gameId,
+        );
         return readAggregate(getRequiredRow(gameId));
       });
     },
@@ -228,9 +257,15 @@ export function createGameRepository(db: SqliteDatabase): GameRepository {
         const now = Date.now();
         db.prepare(
           `UPDATE games
-           SET status = 'completed', result = ?, updated_at = ?, completed_at = ?
+           SET status = 'completed', result = ?, pgn = ?, updated_at = ?, completed_at = ?
            WHERE id = ?`,
-        ).run(validatedResult, now, now, gameId);
+        ).run(
+          validatedResult,
+          pgnWithResult(getRequiredRow(gameId).pgn, validatedResult),
+          now,
+          now,
+          gameId,
+        );
         return readAggregate(getRequiredRow(gameId));
       });
     },
@@ -257,6 +292,14 @@ export function createGameRepository(db: SqliteDatabase): GameRepository {
       createdAt,
     );
   }
+}
+
+function pgnWithResult(pgn: string, result: GameResult): string {
+  const movetext = pgn
+    .trim()
+    .replace(/(?:\s+(?:1-0|0-1|1\/2-1\/2|\*))+\s*$/, '')
+    .trim();
+  return movetext.length === 0 ? result : `${movetext} ${result}`;
 }
 
 function ensureOpen(game: GameRow): void {

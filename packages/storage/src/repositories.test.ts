@@ -128,6 +128,73 @@ describe('SQLite repositories', () => {
     expect(updated.lastAiDecision?.createdAt).toBe(1_700_000_000_000);
   });
 
+  it('commits a terminal human move and exactly one result marker atomically', () => {
+    const harness = newHarness();
+    const game = harness.games.create({
+      humanColor: 'white',
+      modelProfileId: 'qwen3-4b-q4-k-m',
+    });
+    const updated = harness.games.recordHumanMove(
+      game.id,
+      { ...humanMove(), fenAfter: 'terminal-fen', pgnAfter: '1. e4' },
+      '1-0',
+    );
+
+    expect(updated.status).toBe('completed');
+    expect(updated.result).toBe('1-0');
+    expect(updated.completedAt).not.toBeNull();
+    expect(updated.pgn).toBe('1. e4 1-0');
+  });
+
+  it('rolls back a terminal AI move and decision together on a constraint failure', () => {
+    const harness = newHarness();
+    const game = harness.games.create({
+      humanColor: 'white',
+      modelProfileId: 'qwen3-4b-q4-k-m',
+    });
+    harness.games.recordHumanMove(game.id, humanMove());
+    const existing = aiMove();
+    const existingDecision = aiDecision(existing.id);
+    harness.games.recordAiMove(game.id, existing, existingDecision);
+
+    const terminalMove = { ...aiMove(), ply: 3, pgnAfter: '1. e4 e5 2. Nf3' };
+    expect(() =>
+      harness.games.recordAiMove(
+        game.id,
+        terminalMove,
+        { ...aiDecision(terminalMove.id), id: existingDecision.id },
+        '1-0',
+      ),
+    ).toThrow();
+
+    const unchanged = harness.games.getRequired(game.id);
+    expect(unchanged.status).toBe('active');
+    expect(unchanged.result).toBe('*');
+    expect(unchanged.moves).toHaveLength(2);
+    expect(unchanged.pgn).toBe('1. e4 e5');
+  });
+
+  it('commits a terminal AI move, decision, and result marker together', () => {
+    const harness = newHarness();
+    const game = harness.games.create({
+      humanColor: 'white',
+      modelProfileId: 'qwen3-4b-q4-k-m',
+    });
+    harness.games.recordHumanMove(game.id, humanMove());
+    const move = aiMove();
+    const updated = harness.games.recordAiMove(
+      game.id,
+      move,
+      aiDecision(move.id),
+      '1-0',
+    );
+
+    expect(updated.status).toBe('completed');
+    expect(updated.result).toBe('1-0');
+    expect(updated.pgn).toBe('1. e4 e5 1-0');
+    expect(updated.pgn.match(/1-0/g)).toHaveLength(1);
+  });
+
   it('rolls back an AI move when the later decision insert fails', () => {
     const harness = newHarness();
     const game = harness.games.create({
