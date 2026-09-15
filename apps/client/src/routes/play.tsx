@@ -29,8 +29,11 @@ export function PlayRoute() {
   const abortable = useAbortScope();
   const [failure, setFailure] = useState<unknown>();
   const [announcement, setAnnouncement] = useState('');
+  const modelStatus = health.data?.components.model.status;
+  const modelReady = modelStatus === 'ready';
 
   const acceptGame = (next: GameView) => {
+    setFailure(undefined);
     queryClient.setQueryData(gatewayKeys.game(next.id), next);
     void queryClient.invalidateQueries({
       queryKey: gatewayKeys.games(),
@@ -60,13 +63,11 @@ export function PlayRoute() {
   };
 
   const create = useMutation({
-    mutationFn: () =>
-      abortable((signal) =>
-        gateway.createGame(
-          { humanColor: settings.data?.preferredHumanColor ?? 'white' },
-          signal,
-        ),
-      ),
+    mutationFn: () => {
+      const humanColor = settings.data?.preferredHumanColor;
+      if (!humanColor) throw new Error('Settings are not loaded');
+      return abortable((signal) => gateway.createGame({ humanColor }, signal));
+    },
     onSuccess: (next) => {
       acceptGame(next);
       void navigate(`/games/${next.id}`);
@@ -141,7 +142,7 @@ export function PlayRoute() {
           className="button primary large"
           type="button"
           onClick={() => create.mutate()}
-          disabled={create.isPending}
+          disabled={create.isPending || !settings.data || !modelReady}
         >
           {create.isPending ? 'Starting game…' : 'New Game'}
         </button>
@@ -160,7 +161,7 @@ export function PlayRoute() {
   }
 
   if (gameQuery.isPending) return <RouteLoading label="Loading game…" />;
-  if (gameQuery.isError || !gameQuery.data) {
+  if (!gameQuery.data) {
     return (
       <ProblemBanner
         error={gameQuery.error ?? new Error('Game not found')}
@@ -172,9 +173,7 @@ export function PlayRoute() {
   }
 
   const current = gameQuery.data;
-  const modelStatus = health.data?.components.model.status;
   const runtimeModel = health.data?.components.model;
-  const modelReady = modelStatus === 'ready';
   const pending = [create, humanMove, retryAi, resign, download].some(
     (mutation) => mutation.isPending,
   );
@@ -217,7 +216,7 @@ export function PlayRoute() {
         </div>
       </dl>
       <ProblemBanner
-        error={failure ?? health.error}
+        error={failure ?? gameQuery.error ?? health.error}
         onReconnect={() => {
           setFailure(undefined);
           void Promise.all([health.refetch(), gameQuery.refetch()]);
@@ -243,6 +242,7 @@ export function PlayRoute() {
         </div>
       </div>
       <GameActions
+        canCreate={Boolean(settings.data) && modelReady}
         canResign={current.status !== 'completed'}
         canRetry={current.status === 'awaiting_ai' && modelReady}
         pending={pending}

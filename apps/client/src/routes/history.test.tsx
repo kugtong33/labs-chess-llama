@@ -14,6 +14,11 @@ describe('History route', () => {
   it('separates resumable and completed games and downloads PGN', async () => {
     const user = userEvent.setup();
     const active = game({ updatedAt: '2026-09-15T02:00:00.000Z' });
+    const olderActive = game({
+      id: '66666666-6666-4666-8666-666666666666',
+      modelProfileId: 'qwen3-1.7b-q4-k-m',
+      updatedAt: '2026-09-15T00:30:00.000Z',
+    });
     const completed = game({
       id: '55555555-5555-4555-8555-555555555555',
       status: 'completed',
@@ -27,7 +32,7 @@ describe('History route', () => {
     render(
       <App
         gateway={fakeGateway({
-          listGames: () => Promise.resolve([completed, active]),
+          listGames: () => Promise.resolve([olderActive, completed, active]),
           getPgn,
         })}
         initialEntries={['/history']}
@@ -38,10 +43,15 @@ describe('History route', () => {
       await screen.findByRole('heading', { name: 'Resume' }),
     ).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Completed' })).toBeVisible();
-    expect(screen.getByRole('link', { name: 'Resume game' })).toHaveAttribute(
-      'href',
-      `/games/${active.id}`,
-    );
+    expect(
+      screen.getAllByRole('link', { name: 'Resume game' })[0],
+    ).toHaveAttribute('href', `/games/${active.id}`);
+    const cards = screen.getAllByRole('article');
+    expect(cards[0]).toHaveTextContent(active.id.slice(0, 8));
+    expect(cards[0]).toHaveTextContent(active.modelProfileId);
+    expect(cards[1]).toHaveTextContent(olderActive.id.slice(0, 8));
+    expect(cards[1]).toHaveTextContent(olderActive.modelProfileId);
+    expect(cards[2]).toHaveTextContent(completed.id.slice(0, 8));
     await user.click(screen.getByRole('button', { name: 'Download PGN' }));
     expect(getPgn).toHaveBeenCalledWith(completed.id, expect.any(AbortSignal));
   });

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Chessboard } from 'react-chessboard';
 import type { Color, Promotion, Square } from '@chess-llama/contracts';
 
@@ -25,6 +25,10 @@ export function GameBoard({
   onMove,
 }: GameBoardProps) {
   const [promotion, setPromotion] = useState<PendingPromotion>();
+
+  useEffect(() => {
+    setPromotion(undefined);
+  }, [disabled, fen]);
 
   return (
     <div className="board-panel">
@@ -80,7 +84,9 @@ export function GameBoard({
               key={piece}
               className="button secondary"
               type="button"
+              disabled={disabled}
               onClick={() => {
+                if (disabled) return;
                 onMove(promotion.from, promotion.to, piece);
                 setPromotion(undefined);
               }}
@@ -91,6 +97,7 @@ export function GameBoard({
           <button
             className="button ghost"
             type="button"
+            disabled={disabled}
             onClick={() => setPromotion(undefined)}
           >
             Cancel promotion

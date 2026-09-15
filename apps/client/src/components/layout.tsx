@@ -1,5 +1,7 @@
+import { useEffect } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 
+import { useSettings } from '../api/queries.js';
 import { RuntimeStatus } from './runtime-status.js';
 
 const navigation = [
@@ -9,6 +11,20 @@ const navigation = [
 ] as const;
 
 export function Layout() {
+  const settings = useSettings();
+
+  useEffect(() => {
+    const theme = settings.data?.theme;
+    if (!theme || theme === 'system') {
+      delete document.documentElement.dataset.theme;
+    } else {
+      document.documentElement.dataset.theme = theme;
+    }
+    return () => {
+      delete document.documentElement.dataset.theme;
+    };
+  }, [settings.data?.theme]);
+
   return (
     <div className="app-shell">
       <a className="skip-link" href="#main-content">

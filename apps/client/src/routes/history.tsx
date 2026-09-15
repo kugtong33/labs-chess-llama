@@ -101,6 +101,9 @@ function GameCollection({
                   {game.humanColor === 'white' ? 'White' : 'Black'} ·{' '}
                   {game.result}
                 </strong>
+                <p>
+                  Game {game.id.slice(0, 8)} · {game.modelProfileId}
+                </p>
                 <p>{formatDate(game.updatedAt)}</p>
               </div>
               <span>{game.moves.length} ply</span>

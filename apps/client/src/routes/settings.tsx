@@ -1,13 +1,19 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import type { Settings } from '@chess-llama/contracts';
 
-import { gatewayKeys, useGateway, useSettings } from '../api/queries.js';
+import {
+  gatewayKeys,
+  useGateway,
+  useHealth,
+  useSettings,
+} from '../api/queries.js';
 import { ProblemBanner } from '../components/problem-banner.js';
 import { useAbortScope } from './abort-scope.js';
 
 export function SettingsRoute() {
   const query = useSettings();
+  const health = useHealth();
   if (query.isPending)
     return (
       <p className="route-loading" role="status">
@@ -24,13 +30,23 @@ export function SettingsRoute() {
       />
     );
   }
-  return <SettingsForm initial={query.data} />;
+  return (
+    <SettingsForm
+      initial={query.data}
+      loadedProfileId={health.data?.components.model.profileId}
+    />
+  );
 }
 
-function SettingsForm({ initial }: { initial: Settings }) {
+function SettingsForm({
+  initial,
+  loadedProfileId,
+}: {
+  initial: Settings;
+  loadedProfileId: string | null | undefined;
+}) {
   const [form, setForm] = useState(initial);
   const [saved, setSaved] = useState(false);
-  const loadedProfile = useRef(initial.modelProfileId);
   const gateway = useGateway();
   const queryClient = useQueryClient();
   const abortable = useAbortScope();
@@ -39,25 +55,24 @@ function SettingsForm({ initial }: { initial: Settings }) {
       abortable((signal) => gateway.updateSettings(value, signal)),
     onSuccess: (value) => {
       queryClient.setQueryData(gatewayKeys.settings(), value);
+      void queryClient.invalidateQueries({
+        queryKey: gatewayKeys.settings(),
+        exact: true,
+      });
       setForm(value);
       setSaved(true);
     },
   });
-
-  useEffect(() => {
-    if (form.theme === 'system') {
-      delete document.documentElement.dataset.theme;
-    } else {
-      document.documentElement.dataset.theme = form.theme;
-    }
-  }, [form.theme]);
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSaved(false);
     update.mutate(form);
   };
-  const profileChanged = form.modelProfileId !== loadedProfile.current;
+  const profileChanged =
+    loadedProfileId !== undefined &&
+    loadedProfileId !== null &&
+    form.modelProfileId !== loadedProfileId;
 
   return (
     <section className="settings-page" aria-labelledby="settings-title">

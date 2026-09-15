@@ -1,4 +1,5 @@
 export interface GameActionsProps {
+  canCreate: boolean;
   canResign: boolean;
   canRetry: boolean;
   pending: boolean;
@@ -9,6 +10,7 @@ export interface GameActionsProps {
 }
 
 export function GameActions({
+  canCreate,
   canResign,
   canRetry,
   pending,
@@ -23,7 +25,7 @@ export function GameActions({
         className="button primary"
         type="button"
         onClick={onNewGame}
-        disabled={pending}
+        disabled={pending || !canCreate}
       >
         New Game
       </button>

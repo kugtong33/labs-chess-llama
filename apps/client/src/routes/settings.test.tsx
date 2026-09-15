@@ -1,14 +1,17 @@
 // @vitest-environment jsdom
 
 import '@testing-library/jest-dom/vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from '../app.js';
-import { fakeGateway, settings } from '../test/fixtures.js';
+import { fakeGateway, readyHealth, settings } from '../test/fixtures.js';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  delete document.documentElement.dataset.theme;
+});
 
 describe('Settings route', () => {
   it('saves bounded settings and explains profile restart behavior', async () => {
@@ -58,5 +61,49 @@ describe('Settings route', () => {
       }),
       expect.any(AbortSignal),
     );
+  });
+
+  it('compares saved settings with the profile actually loaded by llama.cpp', async () => {
+    render(
+      <App
+        gateway={fakeGateway({
+          getSettings: () =>
+            Promise.resolve({
+              ...settings,
+              modelProfileId: 'qwen3-1.7b-q4-k-m',
+            }),
+          health: () => Promise.resolve(readyHealth),
+        })}
+        initialEntries={['/settings']}
+      />,
+    );
+
+    expect(
+      await screen.findByText(/Restart the model to apply this profile/u),
+    ).toBeVisible();
+  });
+
+  it('applies only the persisted theme across non-settings routes', async () => {
+    const user = userEvent.setup();
+    const updateSettings = vi.fn((request) =>
+      Promise.resolve({ ...settings, ...request }),
+    );
+    render(
+      <App
+        gateway={fakeGateway({
+          getSettings: () => Promise.resolve({ ...settings, theme: 'dark' }),
+          updateSettings,
+        })}
+        initialEntries={['/settings']}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(document.documentElement).toHaveAttribute('data-theme', 'dark'),
+    );
+    await user.selectOptions(screen.getByLabelText('Theme'), 'light');
+    expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
+    await user.click(screen.getByRole('link', { name: 'Play' }));
+    expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
   });
 });
