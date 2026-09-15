@@ -7,7 +7,7 @@ import { registerDoctorCommand } from './commands/doctor.js';
 import { registerGatewayCommands } from './commands/gateway.js';
 import { registerModelCommands } from './commands/model.js';
 import type { CliDependencies, Output } from './dependencies.js';
-import { createOutput, exitCodeFor } from './output.js';
+import { createOutput, exitCodeFor, PassthroughExit } from './output.js';
 
 export type { CliDependencies } from './dependencies.js';
 
@@ -27,9 +27,7 @@ export function buildProgram(dependencies: CliDependencies): Command {
     .action(async () => {
       const exitCode = await runDev(devDependencies(dependencies));
       if (exitCode !== 0)
-        throw Object.assign(new Error('development stack stopped'), {
-          exitCode,
-        });
+        throw new PassthroughExit('development stack stopped', exitCode);
     });
   registerDoctorCommand(program, dependencies);
   registerGatewayCommands(program, dependencies);

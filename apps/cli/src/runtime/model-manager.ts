@@ -63,13 +63,14 @@ export class ModelManager {
     this.#now = options.now ?? Date.now;
   }
 
-  public async pull(profileId: string): Promise<string> {
+  public async pull(profileId: string, signal?: AbortSignal): Promise<string> {
+    signal?.throwIfAborted();
     const profile = this.#profile(profileId);
     await mkdir(this.#modelDir, { recursive: true });
     const destination = this.#modelPath(profile);
-    await this.#runCompose(['pull', 'llama'], profile);
+    await this.#runCompose(['pull', 'llama'], profile, signal);
     if (await exists(destination)) {
-      if ((await sha256File(destination)) === profile.sha256)
+      if ((await sha256File(destination, signal)) === profile.sha256)
         return destination;
       await rename(destination, `${destination}.invalid-${this.#now()}`);
     }
@@ -78,23 +79,31 @@ export class ModelManager {
       destination,
       profile.sha256,
       this.#fetch,
+      signal,
     );
     return destination;
   }
 
-  public async start(profileId: string): Promise<void> {
+  public async start(profileId: string, signal?: AbortSignal): Promise<void> {
     const profile = this.#profile(profileId);
-    await this.#verifyInstalled(profile);
-    await this.#runCompose(['up', '-d', '--force-recreate', 'llama'], profile);
+    await this.#verifyInstalled(profile, signal);
+    await this.#runCompose(
+      ['up', '-d', '--force-recreate', 'llama'],
+      profile,
+      signal,
+    );
     const controller = new AbortController();
     const timeoutMessage = `llama.cpp did not become healthy within ${this.#healthTimeoutMs}ms`;
     const timeout = setTimeout(
       () => controller.abort(new Error(timeoutMessage)),
       this.#healthTimeoutMs,
     );
+    const startupSignal = signal
+      ? AbortSignal.any([signal, controller.signal])
+      : controller.signal;
     try {
-      await this.#waitForHealth(controller.signal);
-      const modelId = await this.#modelId(controller.signal);
+      await this.#waitForHealth(startupSignal);
+      const modelId = await this.#modelId(startupSignal);
       if (modelId !== profile.file) {
         throw new Error(
           `llama.cpp loaded ${modelId ?? 'no model'}, expected ${profile.file}`,
@@ -102,6 +111,7 @@ export class ModelManager {
       }
       this.#activeProfile = profile;
     } catch (error) {
+      if (signal?.aborted) throw abortError(signal);
       if (controller.signal.aborted) {
         throw new Error(timeoutMessage, { cause: error });
       }
@@ -174,12 +184,15 @@ export class ModelManager {
     return join(this.#modelDir, profile.file);
   }
 
-  async #verifyInstalled(profile: RuntimeProfile): Promise<void> {
+  async #verifyInstalled(
+    profile: RuntimeProfile,
+    signal?: AbortSignal,
+  ): Promise<void> {
     const path = this.#modelPath(profile);
     if (!(await exists(path))) {
       throw new Error(`Model is not installed: run model pull ${profile.id}`);
     }
-    if ((await sha256File(path)) !== profile.sha256) {
+    if ((await sha256File(path, signal)) !== profile.sha256) {
       throw new Error(`Installed model checksum mismatch: ${profile.file}`);
     }
   }
@@ -187,8 +200,13 @@ export class ModelManager {
   async #runCompose(
     args: readonly string[],
     profile: RuntimeProfile,
+    signal?: AbortSignal,
   ): Promise<void> {
-    const result = await this.#docker.compose(args, this.#environment(profile));
+    const result = await this.#docker.compose(
+      args,
+      this.#environment(profile),
+      signal,
+    );
     assertSuccess(result, `docker compose ${args.join(' ')}`);
   }
 

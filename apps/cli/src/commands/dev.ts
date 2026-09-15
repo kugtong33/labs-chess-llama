@@ -18,6 +18,7 @@ export interface DevDependencies {
 export async function runDev(dependencies: DevDependencies): Promise<number> {
   const report = await dependencies.doctor();
   if (!(report.prerequisitesOk ?? report.ok)) return 3;
+  if (dependencies.signal.aborted) return 0;
   let modelOwned = false;
   let gatewayOwned = false;
   let clientOwned = false;
@@ -25,32 +26,31 @@ export async function runDev(dependencies: DevDependencies): Promise<number> {
   let stage: 'migration' | 'model' | 'children' = 'migration';
   try {
     await dependencies.migrate();
+    if (dependencies.signal.aborted) return 0;
     stage = 'model';
-    if (
-      !dependencies.signal.aborted &&
-      !(await dependencies.isModelRunning?.())
-    ) {
-      await dependencies.startModel();
+    const modelRunning = await dependencies.isModelRunning?.();
+    if (dependencies.signal.aborted) return 0;
+    if (!modelRunning) {
       modelOwned = true;
+      await dependencies.startModel();
     }
+    if (dependencies.signal.aborted) return 0;
 
     stage = 'children';
     const children: Promise<unknown>[] = [];
-    if (
-      !dependencies.signal.aborted &&
-      !(await dependencies.isGatewayRunning?.())
-    ) {
+    const gatewayRunning = await dependencies.isGatewayRunning?.();
+    if (dependencies.signal.aborted) return 0;
+    if (!gatewayRunning) {
+      gatewayOwned = true;
       children.push(
         supervise(dependencies.startGateway(), dependencies.signal),
       );
-      gatewayOwned = true;
     }
-    if (
-      !dependencies.signal.aborted &&
-      !(await dependencies.isClientRunning?.())
-    ) {
-      children.push(supervise(dependencies.startClient(), dependencies.signal));
+    const clientRunning = await dependencies.isClientRunning?.();
+    if (dependencies.signal.aborted) return 0;
+    if (!clientRunning) {
       clientOwned = true;
+      children.push(supervise(dependencies.startClient(), dependencies.signal));
     }
     if (!dependencies.signal.aborted) {
       failure = await Promise.race([
@@ -59,7 +59,9 @@ export async function runDev(dependencies: DevDependencies): Promise<number> {
       ]);
     }
   } catch (error) {
-    failure = stageFailure(error, stage);
+    failure = dependencies.signal.aborted
+      ? undefined
+      : stageFailure(error, stage);
   } finally {
     if (clientOwned)
       await safelyStop(
@@ -166,7 +168,7 @@ export function devDependencies(
         (await dependencies.preferredProfile?.()) ??
         dependencies.defaultProfile ??
         'qwen3-4b-q4-k-m';
-      await dependencies.model.start(profile);
+      await dependencies.model.start(profile, dependencies.signal);
     },
     stopModel: () => dependencies.model.stop(),
     isGatewayRunning: () =>

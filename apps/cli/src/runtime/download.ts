@@ -3,13 +3,25 @@ import { createReadStream } from 'node:fs';
 import { mkdir, open, rename, rm } from 'node:fs/promises';
 import { basename, dirname } from 'node:path';
 
-export async function sha256File(path: string): Promise<string> {
+export async function sha256File(
+  path: string,
+  signal?: AbortSignal,
+): Promise<string> {
   const hash = createHash('sha256');
-  const stream: AsyncIterable<unknown> = createReadStream(path);
-  for await (const chunk of stream) {
-    if (!Buffer.isBuffer(chunk))
-      throw new Error(`Unexpected data while hashing ${path}`);
-    hash.update(chunk);
+  const stream: AsyncIterable<unknown> = createReadStream(path, { signal });
+  try {
+    for await (const chunk of stream) {
+      if (!Buffer.isBuffer(chunk))
+        throw new Error(`Unexpected data while hashing ${path}`);
+      hash.update(chunk);
+    }
+  } catch (error) {
+    if (signal?.aborted) {
+      throw signal.reason instanceof Error
+        ? signal.reason
+        : new Error('Operation aborted', { cause: signal.reason });
+    }
+    throw error;
   }
   return hash.digest('hex');
 }
@@ -19,6 +31,7 @@ export async function downloadVerified(
   destination: string,
   expectedSha256: string,
   fetcher: typeof fetch,
+  signal?: AbortSignal,
 ): Promise<void> {
   await mkdir(dirname(destination), { recursive: true });
   const partial = `${destination}.partial`;
@@ -26,13 +39,15 @@ export async function downloadVerified(
 
   let handle;
   try {
-    const response = await fetcher(url);
+    signal?.throwIfAborted();
+    const response = await fetcher(url, { signal });
     if (!response.ok || response.body === null) {
       throw new Error(`Model download failed with HTTP ${response.status}`);
     }
     handle = await open(partial, 'wx');
     const hash = createHash('sha256');
     for await (const chunk of response.body) {
+      signal?.throwIfAborted();
       const bytes = Buffer.from(chunk);
       hash.update(bytes);
       await handle.writeFile(bytes);

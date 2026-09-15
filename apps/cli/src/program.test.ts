@@ -153,6 +153,18 @@ describe('chess-llama command tree', () => {
     storage.database.migrate = () => Promise.reject(new Error('disk full'));
     await expect(runCli(['db', 'migrate'], storage)).resolves.toBe(6);
 
+    const gateway = createFakeDependencies();
+    gateway.gateway.start = () =>
+      Promise.reject(
+        Object.assign(new Error('missing node'), { exitCode: 127 }),
+      );
+    await expect(runCli(['gateway', 'start'], gateway)).resolves.toBe(4);
+
+    const client = createFakeDependencies();
+    client.client.dev = () =>
+      Promise.reject(Object.assign(new Error('vite failed'), { exitCode: 9 }));
+    await expect(runCli(['client', 'dev'], client)).resolves.toBe(4);
+
     await expect(runCli(['unknown'], createFakeDependencies())).resolves.toBe(
       2,
     );
@@ -164,6 +176,39 @@ describe('chess-llama command tree', () => {
       Promise.resolve({ exitCode: 17, stdout: '', stderr: 'logs failed' });
 
     await expect(runCli(['model', 'logs'], dependencies)).resolves.toBe(17);
+  });
+
+  it('passes the CLI cancellation signal to standalone model operations', async () => {
+    const dependencies = createFakeDependencies();
+    let pullSignal: AbortSignal | undefined;
+    let startSignal: AbortSignal | undefined;
+    dependencies.model.pull = (_profile, signal) => {
+      pullSignal = signal;
+      return Promise.resolve();
+    };
+    dependencies.model.start = (_profile, signal) => {
+      startSignal = signal;
+      return new Promise<void>((resolve) => {
+        if (signal?.aborted) return resolve();
+        signal?.addEventListener('abort', () => resolve(), { once: true });
+      });
+    };
+
+    await expect(
+      runCli(['model', 'pull'], dependencies, dependencies.abortSignal),
+    ).resolves.toBe(0);
+    const pending = runCli(
+      ['model', 'start'],
+      dependencies,
+      dependencies.abortSignal,
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+    dependencies.stop();
+
+    await expect(pending).resolves.toBe(0);
+    expect(pullSignal).toBe(dependencies.abortSignal);
+    expect(startSignal).toBe(dependencies.abortSignal);
+    expect(startSignal?.aborted).toBe(true);
   });
 
   it('falls back to the 4B profile when persisted settings are unavailable', async () => {

@@ -81,11 +81,20 @@ export class CliFailure extends Error {
   }
 }
 
+export class PassthroughExit extends Error {
+  public constructor(
+    message: string,
+    public readonly exitCode: number,
+  ) {
+    super(message);
+  }
+}
+
 export function exitCodeFor(error: unknown): number {
   if (error instanceof CliFailure) return error.code;
   if (error instanceof ZodError) return exitCodes.input;
   if (isCommanderInputError(error)) return exitCodes.input;
-  if (isExitCode(error)) return error.exitCode;
+  if (error instanceof PassthroughExit) return error.exitCode;
   const message = error instanceof Error ? error.message.toLowerCase() : '';
   if (message.includes('health')) return exitCodes.health;
   if (
@@ -115,15 +124,6 @@ export async function asCliFailure<T>(
   } catch (error) {
     throw new CliFailure(message, code, { cause: error });
   }
-}
-
-function isExitCode(value: unknown): value is { exitCode: number } {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'exitCode' in value &&
-    typeof value.exitCode === 'number'
-  );
 }
 
 function isCommanderInputError(value: unknown): boolean {

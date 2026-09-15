@@ -206,6 +206,17 @@ describe('ModelManager', () => {
     );
   });
 
+  it('stops model startup promptly when the caller cancels it', async () => {
+    const harness = await createModelManagerHarness({ healthDelayMs: 150 });
+    await harness.manager.pull(profile.id);
+    const controller = new AbortController();
+
+    const pending = harness.manager.start(profile.id, controller.signal);
+    controller.abort(new Error('caller cancelled'));
+
+    await expect(pending).rejects.toThrow('caller cancelled');
+  });
+
   it('reports model identity and delegates stop and logs', async () => {
     const harness = await createModelManagerHarness();
     await harness.manager.pull(profile.id);

@@ -6,6 +6,7 @@ import {
   CliFailure,
   exitCodes,
   parseOutputFormat,
+  PassthroughExit,
 } from '../output.js';
 import { outputFor } from '../program.js';
 
@@ -31,9 +32,7 @@ export function registerModelCommands(
   model.command('logs').action(async () => {
     const result = await dependencies.model.logs();
     if (hasFailedExit(result)) {
-      throw Object.assign(new Error('Model logs command failed'), {
-        exitCode: result.exitCode,
-      });
+      throw new PassthroughExit('Model logs command failed', result.exitCode);
     }
     outputFor(dependencies).write(result);
   });
@@ -41,14 +40,20 @@ export function registerModelCommands(
     .command('pull')
     .option('--profile <id>')
     .action(async (options: { profile?: string }) => {
-      await dependencies.model.pull(await profile(options, dependencies));
+      await dependencies.model.pull(
+        await profile(options, dependencies),
+        dependencies.signal,
+      );
     });
   model
     .command('start')
     .option('--profile <id>')
     .action(async (options: { profile?: string }) => {
       try {
-        await dependencies.model.start(await profile(options, dependencies));
+        await dependencies.model.start(
+          await profile(options, dependencies),
+          dependencies.signal,
+        );
       } catch (error) {
         const message = error instanceof Error ? error.message : '';
         throw new CliFailure(

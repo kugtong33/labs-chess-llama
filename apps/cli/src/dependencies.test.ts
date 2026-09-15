@@ -20,7 +20,11 @@ describe('default CLI dependencies', () => {
     const runner: ProcessRunner = {
       run(command, args) {
         calls.push({ command, args });
-        return Promise.resolve({ exitCode: 0, stdout: 'ok', stderr: '' });
+        return Promise.resolve({
+          exitCode: 0,
+          stdout: command === 'pnpm' ? '11.5.1' : 'ok',
+          stderr: '',
+        });
       },
     };
     const model: ModelDependencies = {
@@ -45,6 +49,10 @@ describe('default CLI dependencies', () => {
         model,
         portOpen: () => Promise.resolve(false),
         fetch: () => Promise.resolve(new Response(null, { status: 503 })),
+        hashFile: () =>
+          Promise.resolve(
+            '7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5',
+          ),
       },
     );
 
@@ -80,5 +88,54 @@ describe('default CLI dependencies', () => {
     expect(gpu?.args.join(' ')).toMatch(
       /ghcr\.io\/ggml-org\/llama\.cpp@sha256:[a-f0-9]{64}/u,
     );
+  });
+
+  it('rejects an unpinned pnpm and an installed model with the wrong checksum', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'chess-llama-doctor-invalid-'));
+    const modelDir = join(root, 'cache', 'models');
+    await mkdir(modelDir, { recursive: true });
+    await writeFile(join(modelDir, 'Qwen3-4B-Q4_K_M.gguf'), 'corrupt');
+    const model: ModelDependencies = {
+      pull: () => Promise.resolve(),
+      start: () => Promise.resolve(),
+      stop: () => Promise.resolve(),
+      status: () =>
+        Promise.resolve({ healthy: false, containerState: 'stopped' }),
+      logs: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
+    };
+    const dependencies = await createDefaultDependencies(
+      {
+        configFile: join(root, 'config', 'config.json'),
+        databaseFile: join(root, 'data', 'chess-llama.sqlite'),
+        backupsDir: join(root, 'data', 'backups'),
+        benchmarksDir: join(root, 'data', 'benchmarks'),
+        modelDir,
+        composeFile: join(root, 'compose.yaml'),
+      },
+      {
+        runner: {
+          run: (command) =>
+            Promise.resolve({
+              exitCode: 0,
+              stdout: command === 'pnpm' ? '10.0.0' : 'ok',
+              stderr: '',
+            }),
+        },
+        model,
+        portOpen: () => Promise.resolve(false),
+        fetch: () => Promise.resolve(new Response(null, { status: 503 })),
+        hashFile: () => Promise.resolve('0'.repeat(64)),
+      },
+    );
+
+    const report = await dependencies.doctor();
+
+    expect(report.prerequisitesOk).toBe(false);
+    expect(report.checks.find((check) => check.name === 'pnpm')?.ok).toBe(
+      false,
+    );
+    expect(
+      report.checks.find((check) => check.name === 'model-installed')?.ok,
+    ).toBe(false);
   });
 });

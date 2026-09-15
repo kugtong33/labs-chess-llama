@@ -10,7 +10,11 @@ export function registerGatewayCommands(
 ): void {
   const gateway = parent.command('gateway').description('manage the gateway');
   gateway.command('dev').action(async () => {
-    await dependencies.gateway.dev(dependencies.signal);
+    await asCliFailure(
+      dependencies.gateway.dev(dependencies.signal),
+      exitCodes.runtime,
+      'Gateway development server failed',
+    );
   });
   gateway
     .command('health')
@@ -26,6 +30,10 @@ export function registerGatewayCommands(
       );
     });
   gateway.command('start').action(async () => {
-    await dependencies.gateway.start(dependencies.signal);
+    await asCliFailure(
+      dependencies.gateway.start(dependencies.signal),
+      exitCodes.runtime,
+      'Gateway start failed',
+    );
   });
 }

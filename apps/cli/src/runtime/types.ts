@@ -46,6 +46,7 @@ export interface DockerAdapter {
   compose(
     args: readonly string[],
     env: Readonly<Record<string, string>>,
+    signal?: AbortSignal,
   ): Promise<DockerResult>;
 }
 

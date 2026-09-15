@@ -14,6 +14,7 @@ import {
 
 import { resolveChessLlamaPaths, type ChessLlamaPaths } from './paths.js';
 import { ModelManager } from './runtime/model-manager.js';
+import { sha256File } from './runtime/download.js';
 import type { DockerResult, RuntimeManifest } from './runtime/types.js';
 
 export interface Output {
@@ -49,8 +50,8 @@ export interface DatabaseDependencies {
 }
 
 export interface ModelDependencies {
-  pull(profile?: string): Promise<unknown>;
-  start(profile?: string): Promise<unknown>;
+  pull(profile?: string, signal?: AbortSignal): Promise<unknown>;
+  start(profile?: string, signal?: AbortSignal): Promise<unknown>;
   stop(): Promise<unknown>;
   status(): Promise<unknown>;
   logs(): Promise<unknown>;
@@ -90,6 +91,7 @@ export interface DefaultDependencyAdapters {
   fetch?: typeof fetch;
   model?: ModelDependencies;
   portOpen?: (port: number) => Promise<boolean>;
+  hashFile?: (path: string, signal?: AbortSignal) => Promise<string>;
   now?: () => number;
 }
 
@@ -312,7 +314,7 @@ export async function createDefaultDependencies(
         const pnpm = await runner.run('pnpm', ['--version'], signal);
         add(
           'pnpm',
-          pnpm.exitCode === 0,
+          pnpm.exitCode === 0 && pnpm.stdout.trim() === '11.5.1',
           pnpm.stdout.trim() || pnpm.stderr.trim(),
         );
       } catch (error) {
@@ -393,8 +395,16 @@ export async function createDefaultDependencies(
         }
         const profile = manifest.profiles.find((item) => item.id === profileId);
         if (!profile) throw new Error(`Unknown model profile: ${profileId}`);
-        await access(join(paths.modelDir, profile.file));
-        add('model-installed', true, profile.file);
+        const modelPath = join(paths.modelDir, profile.file);
+        await access(modelPath);
+        const actualSha256 = await (adapters.hashFile ?? sha256File)(
+          modelPath,
+          signal,
+        );
+        if (actualSha256 !== profile.sha256) {
+          throw new Error(`Installed model checksum mismatch: ${profile.file}`);
+        }
+        add('model-installed', true, `${profile.file} checksum verified`);
       } catch (error) {
         add('model-installed', false, String(error));
       }

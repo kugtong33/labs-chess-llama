@@ -3,6 +3,61 @@ import { describe, expect, it } from 'vitest';
 import { runDev, type DevDependencies } from './dev.js';
 
 describe('dev orchestration', () => {
+  it('does not migrate or start layers when already cancelled', async () => {
+    const events: string[] = [];
+    const controller = new AbortController();
+    controller.abort();
+    const dependencies: DevDependencies = {
+      signal: controller.signal,
+      doctor: () => Promise.resolve({ ok: true, checks: [] }),
+      migrate: () => {
+        events.push('db:migrate');
+        return Promise.resolve();
+      },
+      startModel: () => Promise.resolve(),
+      stopModel: () => Promise.resolve(),
+      startGateway: () => Promise.resolve(),
+      stopGateway: () => Promise.resolve(),
+      startClient: () => Promise.resolve(),
+      stopClient: () => Promise.resolve(),
+    };
+
+    await expect(runDev(dependencies)).resolves.toBe(0);
+    expect(events).toEqual([]);
+  });
+
+  it('does not start a layer when cancellation arrives during its probe', async () => {
+    const events: string[] = [];
+    const controller = new AbortController();
+    let finishProbe: ((running: boolean) => void) | undefined;
+    const dependencies: DevDependencies = {
+      signal: controller.signal,
+      doctor: () => Promise.resolve({ ok: true, checks: [] }),
+      migrate: () => Promise.resolve(),
+      isModelRunning: () =>
+        new Promise<boolean>((resolve) => {
+          finishProbe = resolve;
+        }),
+      startModel: () => {
+        events.push('model:start');
+        return Promise.resolve();
+      },
+      stopModel: () => Promise.resolve(),
+      startGateway: () => Promise.resolve(),
+      stopGateway: () => Promise.resolve(),
+      startClient: () => Promise.resolve(),
+      stopClient: () => Promise.resolve(),
+    };
+
+    const pending = runDev(dependencies);
+    await new Promise((resolve) => setImmediate(resolve));
+    controller.abort();
+    finishProbe?.(false);
+
+    await expect(pending).resolves.toBe(0);
+    expect(events).toEqual([]);
+  });
+
   it('returns the first child failure and still tears down owned resources', async () => {
     const events: string[] = [];
     const controller = new AbortController();
@@ -101,7 +156,6 @@ describe('dev orchestration', () => {
   it('does not start or stop a model that was already running', async () => {
     const events: string[] = [];
     const controller = new AbortController();
-    controller.abort();
     const dependencies: DevDependencies = {
       signal: controller.signal,
       doctor: () => Promise.resolve({ ok: true, checks: [] }),
@@ -115,7 +169,10 @@ describe('dev orchestration', () => {
         events.push('model:stop');
         return Promise.resolve();
       },
-      startGateway: () => Promise.resolve(),
+      startGateway: () => {
+        controller.abort();
+        return Promise.resolve();
+      },
       stopGateway: () => Promise.resolve(),
       startClient: () => Promise.resolve(),
       stopClient: () => Promise.resolve(),

@@ -1,6 +1,7 @@
 import type { Command } from 'commander';
 
 import type { CliDependencies } from '../dependencies.js';
+import { asCliFailure, exitCodes } from '../output.js';
 
 export function registerClientCommands(
   parent: Command,
@@ -10,12 +11,24 @@ export function registerClientCommands(
     .command('client')
     .description('manage the browser client');
   client.command('build').action(async () => {
-    await dependencies.client.build();
+    await asCliFailure(
+      dependencies.client.build(),
+      exitCodes.runtime,
+      'Client build failed',
+    );
   });
   client.command('dev').action(async () => {
-    await dependencies.client.dev(dependencies.signal);
+    await asCliFailure(
+      dependencies.client.dev(dependencies.signal),
+      exitCodes.runtime,
+      'Client development server failed',
+    );
   });
   client.command('serve').action(async () => {
-    await dependencies.client.serve(dependencies.signal);
+    await asCliFailure(
+      dependencies.client.serve(dependencies.signal),
+      exitCodes.runtime,
+      'Client preview server failed',
+    );
   });
 }
