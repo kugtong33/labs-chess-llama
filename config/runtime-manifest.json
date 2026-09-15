@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-15T10:03:14.046Z",
+  "generatedAt": "2026-09-15T13:41:02.140Z",
   "image": "ghcr.io/ggml-org/llama.cpp@sha256:5268283a8d6510d167364f19aee93e98180d8eb0cac4b7edb20af7e3edf40c17",
   "source": {
     "image": "ghcr.io/ggml-org/llama.cpp:server-cuda"

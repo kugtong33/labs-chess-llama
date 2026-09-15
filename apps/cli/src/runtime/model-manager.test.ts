@@ -40,6 +40,8 @@ async function createModelManagerHarness(
     corruptDownload?: boolean;
     reportedModelId?: string;
     unhealthy?: boolean;
+    healthDelayMs?: number;
+    modelsDelayMs?: number;
   } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), 'chess-llama-runtime-'));
@@ -59,24 +61,36 @@ async function createModelManagerHarness(
           ? input.href
           : input.url;
     if (url.endsWith('/v1/health')) {
-      return Promise.resolve(
-        new Response(
-          JSON.stringify({ status: options.unhealthy ? 'error' : 'ok' }),
-          {
-            status: options.unhealthy ? 503 : 200,
-          },
-        ),
-      );
+      return new Promise((resolve) => {
+        setTimeout(
+          () =>
+            resolve(
+              new Response(
+                JSON.stringify({
+                  status: options.unhealthy ? 'error' : 'ok',
+                }),
+                { status: options.unhealthy ? 503 : 200 },
+              ),
+            ),
+          options.healthDelayMs ?? 0,
+        );
+      });
     }
     if (url.endsWith('/v1/models')) {
-      return Promise.resolve(
-        new Response(
-          JSON.stringify({
-            data: [{ id: options.reportedModelId ?? profile.file }],
-          }),
-          { status: 200 },
-        ),
-      );
+      return new Promise((resolve) => {
+        setTimeout(
+          () =>
+            resolve(
+              new Response(
+                JSON.stringify({
+                  data: [{ id: options.reportedModelId ?? profile.file }],
+                }),
+                { status: 200 },
+              ),
+            ),
+          options.modelsDelayMs ?? 0,
+        );
+      });
     }
     const bytes = options.corruptDownload
       ? new TextEncoder().encode('corrupt')
@@ -174,6 +188,20 @@ describe('ModelManager', () => {
     await harness.manager.pull(profile.id);
 
     await expect(harness.manager.start(profile.id)).rejects.toThrow(
+      'within 100ms',
+    );
+  });
+
+  it('bounds slow health and model-identity responses by the startup timeout', async () => {
+    const slowHealth = await createModelManagerHarness({ healthDelayMs: 150 });
+    await slowHealth.manager.pull(profile.id);
+    await expect(slowHealth.manager.start(profile.id)).rejects.toThrow(
+      'within 100ms',
+    );
+
+    const slowModels = await createModelManagerHarness({ modelsDelayMs: 150 });
+    await slowModels.manager.pull(profile.id);
+    await expect(slowModels.manager.start(profile.id)).rejects.toThrow(
       'within 100ms',
     );
   });

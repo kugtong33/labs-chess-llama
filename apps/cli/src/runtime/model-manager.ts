@@ -86,14 +86,29 @@ export class ModelManager {
     const profile = this.#profile(profileId);
     await this.#verifyInstalled(profile);
     await this.#runCompose(['up', '-d', '--force-recreate', 'llama'], profile);
-    await this.#waitForHealth();
-    const modelId = await this.#modelId();
-    if (modelId !== profile.file) {
-      throw new Error(
-        `llama.cpp loaded ${modelId ?? 'no model'}, expected ${profile.file}`,
-      );
+    const controller = new AbortController();
+    const timeoutMessage = `llama.cpp did not become healthy within ${this.#healthTimeoutMs}ms`;
+    const timeout = setTimeout(
+      () => controller.abort(new Error(timeoutMessage)),
+      this.#healthTimeoutMs,
+    );
+    try {
+      await this.#waitForHealth(controller.signal);
+      const modelId = await this.#modelId(controller.signal);
+      if (modelId !== profile.file) {
+        throw new Error(
+          `llama.cpp loaded ${modelId ?? 'no model'}, expected ${profile.file}`,
+        );
+      }
+      this.#activeProfile = profile;
+    } catch (error) {
+      if (controller.signal.aborted) {
+        throw new Error(timeoutMessage, { cause: error });
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
     }
-    this.#activeProfile = profile;
   }
 
   public async stop(): Promise<void> {
@@ -121,8 +136,11 @@ export class ModelManager {
     let modelId: string | undefined;
     if (container.exitCode === 0 && container.stdout.trim() !== '') {
       try {
-        healthy = (await this.#fetch(this.#url('/v1/health'))).ok;
-        if (healthy) modelId = await this.#modelId();
+        const signal = AbortSignal.timeout(
+          Math.min(this.#healthTimeoutMs, 5_000),
+        );
+        healthy = (await this.#request('/v1/health', signal)).ok;
+        if (healthy) modelId = await this.#modelId(signal);
       } catch {
         healthy = false;
       }
@@ -187,26 +205,29 @@ export class ModelManager {
     };
   }
 
-  async #waitForHealth(): Promise<void> {
+  async #waitForHealth(signal: AbortSignal): Promise<void> {
     const attempts = Math.max(
       1,
       Math.ceil(this.#healthTimeoutMs / this.#healthIntervalMs),
     );
     for (let attempt = 0; attempt < attempts; attempt += 1) {
       try {
-        if ((await this.#fetch(this.#url('/v1/health'))).ok) return;
+        if ((await this.#request('/v1/health', signal)).ok) return;
       } catch {
+        if (signal.aborted) throw abortError(signal);
         // The server may still be starting.
       }
-      if (attempt + 1 < attempts) await this.#sleep(this.#healthIntervalMs);
+      if (attempt + 1 < attempts) {
+        await raceWithAbort(this.#sleep(this.#healthIntervalMs), signal);
+      }
     }
     throw new Error(
       `llama.cpp did not become healthy within ${this.#healthTimeoutMs}ms`,
     );
   }
 
-  async #modelId(): Promise<string | undefined> {
-    const response = await this.#fetch(this.#url('/v1/models'));
+  async #modelId(signal: AbortSignal): Promise<string | undefined> {
+    const response = await this.#request('/v1/models', signal);
     if (!response.ok)
       throw new Error(`/v1/models returned HTTP ${response.status}`);
     const body: unknown = await response.json();
@@ -219,6 +240,10 @@ export class ModelManager {
 
   #url(path: string): string {
     return `http://127.0.0.1:${this.#port}${path}`;
+  }
+
+  #request(path: string, signal: AbortSignal): Promise<Response> {
+    return raceWithAbort(this.#fetch(this.#url(path), { signal }), signal);
   }
 }
 
@@ -239,4 +264,33 @@ async function exists(path: string): Promise<boolean> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function raceWithAbort<T>(
+  promise: Promise<T>,
+  signal: AbortSignal,
+): Promise<T> {
+  if (signal.aborted) return Promise.reject(abortError(signal));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(abortError(signal));
+    signal.addEventListener('abort', onAbort, { once: true });
+    void promise.then(
+      (value) => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener('abort', onAbort);
+        reject(asError(error));
+      },
+    );
+  });
+}
+
+function abortError(signal: AbortSignal): Error {
+  return asError(signal.reason, 'Operation aborted');
+}
+
+function asError(value: unknown, fallback = 'Operation failed'): Error {
+  return value instanceof Error ? value : new Error(fallback, { cause: value });
 }

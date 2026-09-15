@@ -42,4 +42,22 @@ describe('resolveChessLlamaPaths', () => {
       modelDir: '/models',
     });
   });
+
+  it('ignores empty or relative XDG base directories', () => {
+    const paths = resolveChessLlamaPaths(
+      {
+        XDG_CONFIG_HOME: '',
+        XDG_DATA_HOME: 'relative-data',
+        XDG_CACHE_HOME: './relative-cache',
+      },
+      '/home/player',
+      '/project',
+    );
+
+    expect(paths).toMatchObject({
+      configFile: '/home/player/.config/chess-llama/config.json',
+      databaseFile: '/home/player/.local/share/chess-llama/chess-llama.sqlite',
+      modelDir: '/home/player/.cache/chess-llama/models',
+    });
+  });
 });

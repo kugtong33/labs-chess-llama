@@ -39,4 +39,34 @@ describe('committed runtime configuration', () => {
     expect(compose).toContain('no-new-privileges:true');
     expect(compose).not.toContain('healthcheck:');
   });
+
+  it('rejects unknown fields anywhere in a runtime manifest', async () => {
+    const manifest: unknown = JSON.parse(
+      await readFile(resolve('config/runtime-manifest.json'), 'utf8'),
+    );
+    expect(manifest).toBeTypeOf('object');
+
+    expect(() =>
+      runtimeManifestSchema.parse({
+        ...(manifest as Record<string, unknown>),
+        unexpected: true,
+      }),
+    ).toThrow();
+    const parsed = runtimeManifestSchema.parse(manifest);
+    expect(() =>
+      runtimeManifestSchema.parse({
+        ...parsed,
+        profiles: [
+          {
+            ...parsed.profiles[0],
+            source: {
+              ...parsed.profiles[0]?.source,
+              unexpected: true,
+            },
+          },
+          ...parsed.profiles.slice(1),
+        ],
+      }),
+    ).toThrow();
+  });
 });

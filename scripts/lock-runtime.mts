@@ -5,6 +5,11 @@ import { fileURLToPath } from 'node:url';
 import { execa } from 'execa';
 import { z } from 'zod';
 
+import {
+  runtimeManifestSchema,
+  type RuntimeManifest,
+} from '../apps/cli/src/runtime/types.js';
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const sourcePath = resolve(root, 'config/runtime-source.json');
 const manifestPath = resolve(root, 'config/runtime-manifest.json');
@@ -62,6 +67,10 @@ export async function resolveProfileMetadata(
   };
 }
 
+export function validateRuntimeManifest(value: unknown): RuntimeManifest {
+  return runtimeManifestSchema.parse(value);
+}
+
 export async function lockRuntime(): Promise<void> {
   const source = sourceSchema.parse(
     JSON.parse(await readFile(sourcePath, 'utf8')),
@@ -82,21 +91,13 @@ export async function lockRuntime(): Promise<void> {
     source.profiles.map((profile) => resolveProfileMetadata(profile)),
   );
 
-  const manifest = {
+  const manifest = validateRuntimeManifest({
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
     image: source.image.replace(/:[^/:]+$/u, `@${digest}`),
     source: { image: source.image },
     profiles,
-  };
-  if (!/@sha256:[a-f0-9]{64}$/u.test(manifest.image)) {
-    throw new Error('Resolved image is not immutable');
-  }
-  for (const profile of manifest.profiles) {
-    if (!/^[a-f0-9]{64}$/u.test(profile.sha256)) {
-      throw new Error(`Invalid checksum for ${profile.id}`);
-    }
-  }
+  });
 
   const partial = `${manifestPath}.partial-${process.pid}`;
   try {
