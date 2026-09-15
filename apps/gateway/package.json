@@ -22,6 +22,11 @@
     "@chess-llama/contracts": "workspace:*",
     "@chess-llama/llama-protocol": "workspace:*",
     "@chess-llama/stockfish-adapter": "workspace:*",
-    "@chess-llama/storage": "workspace:*"
+    "@chess-llama/storage": "workspace:*",
+    "@fastify/cors": "^11.3.0",
+    "fastify": "^5.12.4",
+    "fastify-type-provider-zod": "^6.1.0",
+    "pino": "^10.3.1",
+    "zod": "^4.6.5"
   }
 }
