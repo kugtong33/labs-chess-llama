@@ -1,0 +1,27 @@
+{
+  "name": "@chess-llama/gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/game-service.d.ts",
+      "import": "./dist/game-service.js"
+    }
+  },
+  "types": "./dist/game-service.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/game-service.ts --format esm --dts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@chess-llama/chess-domain": "workspace:*",
+    "@chess-llama/contracts": "workspace:*",
+    "@chess-llama/llama-protocol": "workspace:*",
+    "@chess-llama/stockfish-adapter": "workspace:*",
+    "@chess-llama/storage": "workspace:*"
+  }
+}
