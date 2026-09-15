@@ -3,6 +3,8 @@ import { z } from 'zod';
 import {
   AiMoveRequestSchema,
   CreateGameRequestSchema,
+  GameListResponseSchema,
+  GameViewSchema,
   ResignRequestSchema,
   SubmitMoveRequestSchema,
 } from '@chess-llama/contracts';
@@ -16,18 +18,50 @@ function idFrom(request: FastifyRequest): string {
     .parse((request.params as { id: string }).id);
 }
 
-async function withAbort<T>(
-  request: FastifyRequest,
+function invalidDependencyResponse(): Error & { statusCode: number } {
+  return Object.assign(new Error('Dependency returned an invalid response'), {
+    statusCode: 500,
+  });
+}
+
+function parseView(value: unknown) {
+  try {
+    return GameViewSchema.parse(value);
+  } catch {
+    throw invalidDependencyResponse();
+  }
+}
+
+function parseViews(value: unknown) {
+  try {
+    return GameListResponseSchema.parse(value);
+  } catch {
+    throw invalidDependencyResponse();
+  }
+}
+
+export async function withAbort<T>(
+  reply: {
+    raw: {
+      writableFinished: boolean;
+      once: (event: string, listener: () => void) => void;
+      removeListener: (event: string, listener: () => void) => void;
+    };
+  },
   operation: (signal: AbortSignal) => Promise<T>,
 ): Promise<T> {
   const controller = new AbortController();
+  let finished = false;
   const onClose = () =>
+    !finished &&
+    !reply.raw.writableFinished &&
     controller.abort(new DOMException('HTTP connection closed', 'AbortError'));
-  request.raw.once('close', onClose);
+  reply.raw.once('close', onClose);
   try {
     return await operation(controller.signal);
   } finally {
-    request.raw.removeListener('close', onClose);
+    finished = true;
+    reply.raw.removeListener('close', onClose);
   }
 }
 
@@ -36,40 +70,44 @@ export function registerGameRoutes(
   service: GameService,
 ): void {
   app.post('/api/games', async (request, reply) => {
-    const game = await withAbort(request, (signal) =>
+    const game = await withAbort(reply, (signal) =>
       service.createGame(
         CreateGameRequestSchema.parse(request.body ?? {}),
         signal,
       ),
     );
-    return reply.code(201).send(game);
+    return reply.code(201).send(parseView(game));
   });
-  app.get('/api/games', async () => service.listGames());
+  app.get('/api/games', async () => parseViews(await service.listGames()));
   app.get('/api/games/:id', async (request) =>
-    service.getGame(idFrom(request)),
+    parseView(await service.getGame(idFrom(request))),
   );
-  app.post('/api/games/:id/moves', async (request) =>
-    withAbort(request, (signal) =>
+  app.post('/api/games/:id/moves', async (request, reply) => {
+    const game = await withAbort(reply, (signal) =>
       service.submitHumanMove(
         idFrom(request),
         SubmitMoveRequestSchema.parse(request.body),
         signal,
       ),
-    ),
-  );
-  app.post('/api/games/:id/moves/ai', async (request) =>
-    withAbort(request, (signal) =>
+    );
+    return parseView(game);
+  });
+  app.post('/api/games/:id/moves/ai', async (request, reply) => {
+    const game = await withAbort(reply, (signal) =>
       service.retryAiMove(
         idFrom(request),
         AiMoveRequestSchema.parse(request.body),
         signal,
       ),
-    ),
-  );
+    );
+    return parseView(game);
+  });
   app.post('/api/games/:id/resign', async (request) =>
-    service.resignGame(
-      idFrom(request),
-      ResignRequestSchema.parse(request.body),
+    parseView(
+      await service.resignGame(
+        idFrom(request),
+        ResignRequestSchema.parse(request.body),
+      ),
     ),
   );
   app.get('/api/games/:id/pgn', async (request, reply) => {

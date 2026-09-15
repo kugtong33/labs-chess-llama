@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { EventEmitter } from 'node:events';
 import type {
   AiMoveRequest,
   CreateGameRequest,
@@ -11,6 +12,7 @@ import type { ModelHealth } from '@chess-llama/llama-protocol';
 import { GameServiceError } from './errors.js';
 import { buildApp, type GatewayDependencies } from './app.js';
 import { parseGatewayConfig } from './config.js';
+import { withAbort } from './routes/games.js';
 
 const gameId = '11111111-1111-4111-8111-111111111111';
 const game: GameView = {
@@ -52,10 +54,12 @@ function buildTestApp(
   options: {
     modelStatus?: ModelHealth['status'];
     databaseFailure?: boolean;
+    badResponse?: boolean;
   } = {},
 ) {
   let current = game;
   let submittedSignal: AbortSignal | undefined;
+  let cleanupCalls = 0;
   const service = {
     createGame(_input: CreateGameRequest, signal?: AbortSignal) {
       submittedSignal = signal;
@@ -68,7 +72,9 @@ function buildTestApp(
       if (options.databaseFailure) throw new Error('sqlite failure');
       if (id !== gameId)
         throw new GameServiceError('GAME_NOT_FOUND', 'not found');
-      return Promise.resolve(current);
+      return Promise.resolve(
+        options.badResponse ? { ...current, status: 'invalid' } : current,
+      );
     },
     submitHumanMove(
       id: string,
@@ -139,11 +145,17 @@ function buildTestApp(
       llamaBaseUrl: 'http://127.0.0.1:8080',
       logLevel: 'info',
     },
+    cleanup: () => {
+      cleanupCalls += 1;
+    },
   };
   return {
     app: buildApp(dependencies),
     get submittedSignal() {
       return submittedSignal;
+    },
+    get cleanupCalls() {
+      return cleanupCalls;
     },
   };
 }
@@ -288,6 +300,17 @@ describe('Fastify gateway API', () => {
     expect(problem.stack).toBeUndefined();
   });
 
+  it('rejects invalid dependency JSON at the shared response boundary', async () => {
+    const response = await buildTestApp({ badResponse: true }).app.inject({
+      method: 'GET',
+      url: `/api/games/${gameId}`,
+    });
+    expect(response.statusCode).toBe(500);
+    expect(response.headers['content-type']).toContain(
+      'application/problem+json',
+    );
+  });
+
   it('passes HTTP abort signals to game operations', async () => {
     const harness = buildTestApp();
     await harness.app.inject({
@@ -296,6 +319,46 @@ describe('Fastify gateway API', () => {
       payload: {},
     });
     expect(harness.submittedSignal).toBeInstanceOf(AbortSignal);
+    expect(harness.submittedSignal?.aborted).toBe(false);
+  });
+
+  it('runs shutdown cleanup at most once', async () => {
+    const harness = buildTestApp();
+    await harness.app.close();
+    await harness.app.close();
+    expect(harness.cleanupCalls).toBe(1);
+  });
+
+  it('aborts only on a premature response close', async () => {
+    const raw = new EventEmitter() as EventEmitter & {
+      writableFinished: boolean;
+    };
+    raw.writableFinished = false;
+    const reply = { raw };
+    let operationSignal: AbortSignal | undefined;
+    let release!: () => void;
+    const pending = withAbort(reply, (signal) => {
+      operationSignal = signal;
+      return new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    });
+    raw.emit('close');
+    expect(operationSignal?.aborted).toBe(true);
+    release();
+    await pending;
+
+    const completedRaw = new EventEmitter() as EventEmitter & {
+      writableFinished: boolean;
+    };
+    completedRaw.writableFinished = true;
+    let completedSignal!: AbortSignal;
+    await withAbort({ raw: completedRaw }, (signal) => {
+      completedSignal = signal;
+      return Promise.resolve();
+    });
+    completedRaw.emit('close');
+    expect(completedSignal.aborted).toBe(false);
   });
 
   it('defaults to loopback-only configuration and rejects non-loopback hosts', () => {

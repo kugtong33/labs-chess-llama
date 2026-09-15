@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { HealthResponseSchema } from '@chess-llama/contracts';
 
 import type { HealthDependencies } from '../app.js';
 
@@ -32,7 +33,7 @@ export function registerHealthRoute(
       : statuses.includes('unavailable')
         ? 'degraded'
         : 'ready';
-    return {
+    const response = {
       status,
       components: {
         gateway: { status: 'ready' as const },
@@ -48,5 +49,13 @@ export function registerHealthRoute(
         },
       },
     };
+    try {
+      return HealthResponseSchema.parse(response);
+    } catch {
+      throw Object.assign(
+        new Error('Dependency returned an invalid response'),
+        { statusCode: 500 },
+      );
+    }
   });
 }

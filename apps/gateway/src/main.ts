@@ -13,27 +13,47 @@ import {
 
 const config = parseGatewayConfig();
 const database = openDatabase(config.databasePath);
-migrateDatabase(database);
-const games = createGameRepository(database);
-const settings = createSettingsRepository(database);
-const stockfish = await StockfishJsAnalyzer.create();
-const selector = new LlamaCppClient({ baseUrl: config.llamaBaseUrl });
-const service = new GameService({
-  games,
-  settings,
-  stockfish,
-  selector,
-  lock: new GameLock(),
-});
-const app = buildApp({
-  service,
-  settings,
-  config,
-  health: {
-    database: () => ({ status: 'ready' }),
-    stockfish: () => ({ status: 'ready' }),
-    model: (signal) => selector.health(signal),
-  },
-});
+let closed = false;
+let stockfish: StockfishJsAnalyzer | undefined;
+const closeResources = async () => {
+  if (closed) return;
+  closed = true;
+  await stockfish?.close();
+  if (database.open) database.close();
+};
 
-await app.listen({ host: config.host, port: config.port });
+try {
+  migrateDatabase(database);
+  const games = createGameRepository(database);
+  const settings = createSettingsRepository(database);
+  stockfish = await StockfishJsAnalyzer.create();
+  const selector = new LlamaCppClient({ baseUrl: config.llamaBaseUrl });
+  const service = new GameService({
+    games,
+    settings,
+    stockfish,
+    selector,
+    lock: new GameLock(),
+  });
+  const app = buildApp({
+    service,
+    settings,
+    config,
+    cleanup: closeResources,
+    health: {
+      database: () => ({ status: 'ready' }),
+      stockfish: () => ({ status: 'ready' }),
+      model: (signal) => selector.health(signal),
+    },
+  });
+
+  try {
+    await app.listen({ host: config.host, port: config.port });
+  } catch (error) {
+    await app.close();
+    throw error;
+  }
+} catch (error) {
+  await closeResources();
+  throw error;
+}

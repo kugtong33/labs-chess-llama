@@ -3,18 +3,30 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "types": "./dist/app.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/app.d.ts",
+      "import": "./dist/app.js"
+    },
+    "./app": {
+      "types": "./dist/app.d.ts",
+      "import": "./dist/app.js"
+    },
+    "./main": {
+      "types": "./dist/main.d.ts",
+      "import": "./dist/main.js"
+    },
+    "./game-service": {
       "types": "./dist/game-service.d.ts",
       "import": "./dist/game-service.js"
     }
   },
-  "types": "./dist/game-service.d.ts",
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsup src/game-service.ts --format esm --dts",
+    "build": "tsup src/app.ts src/main.ts src/game-service.ts --format esm --dts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

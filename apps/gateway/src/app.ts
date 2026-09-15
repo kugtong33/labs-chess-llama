@@ -23,6 +23,7 @@ export interface GatewayDependencies {
   health: HealthDependencies;
   config: GatewayConfig;
   selector?: MoveSelector;
+  cleanup?: () => void | Promise<void>;
 }
 
 export function buildApp(dependencies: GatewayDependencies): FastifyInstance {
@@ -37,6 +38,12 @@ export function buildApp(dependencies: GatewayDependencies): FastifyInstance {
         'res.body.response',
       ],
     },
+  });
+  let cleanedUp = false;
+  app.addHook('onClose', async () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    await dependencies.cleanup?.();
   });
   void app.register(cors, { origin: dependencies.config.clientOrigin });
   app.addHook('onRequest', async (request, reply) => {
