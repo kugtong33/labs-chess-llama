@@ -117,20 +117,18 @@ describe('SQLite repositories', () => {
     harness.games.recordHumanMove(game.id, humanMove());
 
     const move = aiMove();
-    const updated = harness.games.recordAiMove(
-      game.id,
-      move,
-      aiDecision(move.id),
-    );
+    const decision = { ...aiDecision(move.id), createdAt: 1_700_000_000_000 };
+    const updated = harness.games.recordAiMove(game.id, move, decision);
 
     expect(updated.status).toBe('active');
     expect(updated.currentFen).toBe('fen-after-e5');
     expect(updated.pgn).toBe('1. e4 e5');
     expect(updated.moves.map(({ uci }) => uci)).toEqual(['e2e4', 'e7e5']);
     expect(updated.lastAiDecision?.chosenUci).toBe('e7e5');
+    expect(updated.lastAiDecision?.createdAt).toBe(1_700_000_000_000);
   });
 
-  it('rolls back an AI move when its decision violates JSON constraints', () => {
+  it('rolls back an AI move when the later decision insert fails', () => {
     const harness = newHarness();
     const game = harness.games.create({
       humanColor: 'white',
@@ -138,18 +136,47 @@ describe('SQLite repositories', () => {
     });
     harness.games.recordHumanMove(game.id, humanMove());
 
-    const move = aiMove();
+    const firstMove = aiMove();
+    const firstDecision = aiDecision(firstMove.id);
+    harness.games.recordAiMove(game.id, firstMove, firstDecision);
+
+    const move = { ...aiMove(), ply: 3 };
     expect(() =>
       harness.games.recordAiMove(game.id, move, {
         ...aiDecision(move.id),
-        candidates: [],
+        id: firstDecision.id,
       }),
     ).toThrow();
 
     const unchanged = harness.games.getRequired(game.id);
-    expect(unchanged.moves).toHaveLength(1);
-    expect(unchanged.status).toBe('awaiting_ai');
-    expect(unchanged.lastAiDecision).toBeNull();
+    expect(unchanged.moves).toHaveLength(2);
+    expect(unchanged.moves.at(-1)?.id).toBe(firstMove.id);
+    expect(unchanged.lastAiDecision?.moveId).toBe(firstMove.id);
+  });
+
+  it('selects the highest-ply decision when timestamps are equal', () => {
+    const harness = newHarness();
+    const game = harness.games.create({
+      humanColor: 'white',
+      modelProfileId: 'qwen3-4b-q4-k-m',
+    });
+    harness.games.recordHumanMove(game.id, humanMove());
+
+    const firstMove = aiMove();
+    const timestamp = 1_700_000_000_000;
+    harness.games.recordAiMove(game.id, firstMove, {
+      ...aiDecision(firstMove.id),
+      createdAt: timestamp,
+    });
+    const secondMove = { ...aiMove(), ply: 3 };
+    harness.games.recordAiMove(game.id, secondMove, {
+      ...aiDecision(secondMove.id),
+      createdAt: timestamp,
+    });
+
+    expect(harness.games.getRequired(game.id).lastAiDecision?.moveId).toBe(
+      secondMove.id,
+    );
   });
 
   it('keeps migration idempotent and reports a current migration', () => {

@@ -95,7 +95,12 @@ export function createGameRepository(db: SqliteDatabase): GameRepository {
       .all(row.id) as MoveRow[];
     const decisionRow = db
       .prepare(
-        'SELECT * FROM ai_decisions WHERE game_id = ? ORDER BY created_at DESC LIMIT 1',
+        `SELECT ai.*
+         FROM ai_decisions ai
+         JOIN moves m ON m.id = ai.move_id
+         WHERE ai.game_id = ?
+         ORDER BY m.ply DESC, ai.id DESC
+         LIMIT 1`,
       )
       .get(row.id) as DecisionRow | undefined;
 
@@ -285,7 +290,9 @@ function validateDecision(
     id: decision.id ?? randomUUID(),
     moveId,
   };
-  AiDecisionViewSchema.omit({ createdAt: true }).parse(normalized);
+  const withoutCreatedAt = { ...normalized };
+  delete withoutCreatedAt.createdAt;
+  AiDecisionViewSchema.omit({ createdAt: true }).parse(withoutCreatedAt);
   return normalized;
 }
 
