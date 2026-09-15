@@ -1,11 +1,8 @@
-.worktrees/
+docs/
 .superpowers/
+.worktrees/
 node_modules/
 dist/
 coverage/
 playwright-report/
 test-results/
-.env
-*.sqlite*
-.xdg/
-xdg-test/
