@@ -35,6 +35,15 @@ importers:
         specifier: ^5.0.0
         version: 5.0.0(@types/node@26.5.1)(vite@8.3.0(@types/node@26.5.1)(esbuild@0.27.7)(tsx@4.23.13))
 
+  packages/chess-domain:
+    dependencies:
+      '@chess-llama/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      chess.js:
+        specifier: ^1.4.0
+        version: 1.4.0
+
   packages/contracts:
     dependencies:
       zod:
@@ -1258,6 +1267,12 @@ packages:
         integrity: sha512-NUPRluOfOiTKBKvWPtSD4PhFvWCqOi0BGStNWs57X9js7XGTprSmFoz5F0tWhR4WPjNeR9jXqdC7/UpSJTnlRg==,
       }
     engines: { node: '>=18' }
+
+  chess.js@1.4.0:
+    resolution:
+      {
+        integrity: sha512-BBJgrrtKQOzFLonR0l+k64A98NLemPwNsCskwb+29bRwobUa4iTm51E1kwGPbWXAcfdDa18nad6vpPPKPWarqw==,
+      }
 
   chokidar@4.0.3:
     resolution:
@@ -2802,6 +2817,8 @@ snapshots:
       qified: 0.10.1
 
   chai@6.2.2: {}
+
+  chess.js@1.4.0: {}
 
   chokidar@4.0.3:
     dependencies:
