@@ -1,0 +1,4 @@
+info depth 12 multipv 1 score cp 28 nodes 100 pv e7e5 g1f3
+info depth 12 multipv 2 score cp -40 nodes 100 pv c7c5 g1f3
+info depth 12 multipv 1 score cp 34 nodes 200 pv e7e5 g1f3
+bestmove e7e5

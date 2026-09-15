@@ -1,15 +1,15 @@
 {
-  "name": "@chess-llama/chess-domain",
+  "name": "@chess-llama/stockfish-adapter",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     }
   },
-  "types": "./src/index.ts",
+  "types": "./dist/index.d.ts",
   "files": [
     "dist"
   ],
@@ -18,7 +18,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@chess-llama/chess-domain": "workspace:*",
     "@chess-llama/contracts": "workspace:*",
-    "chess.js": "^1.4.0"
+    "stockfish": "^18.0.8"
+  },
+  "devDependencies": {
+    "@types/node": "^26.5.1"
   }
 }
