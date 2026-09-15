@@ -1,0 +1,84 @@
+import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { describe, expect, it } from 'vitest';
+
+import {
+  createDefaultDependencies,
+  type ModelDependencies,
+  type ProcessRunner,
+} from './dependencies.js';
+
+describe('default CLI dependencies', () => {
+  it('runs every doctor check with the pinned GPU image and separates prerequisites', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'chess-llama-doctor-'));
+    const modelDir = join(root, 'cache', 'models');
+    await mkdir(modelDir, { recursive: true });
+    await writeFile(join(modelDir, 'Qwen3-4B-Q4_K_M.gguf'), 'installed');
+    const calls: Array<{ command: string; args: readonly string[] }> = [];
+    const runner: ProcessRunner = {
+      run(command, args) {
+        calls.push({ command, args });
+        return Promise.resolve({ exitCode: 0, stdout: 'ok', stderr: '' });
+      },
+    };
+    const model: ModelDependencies = {
+      pull: () => Promise.resolve(),
+      start: () => Promise.resolve(),
+      stop: () => Promise.resolve(),
+      status: () =>
+        Promise.resolve({ healthy: false, containerState: 'stopped' }),
+      logs: () => Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
+    };
+    const dependencies = await createDefaultDependencies(
+      {
+        configFile: join(root, 'config', 'config.json'),
+        databaseFile: join(root, 'data', 'chess-llama.sqlite'),
+        backupsDir: join(root, 'data', 'backups'),
+        benchmarksDir: join(root, 'data', 'benchmarks'),
+        modelDir,
+        composeFile: join(root, 'compose.yaml'),
+      },
+      {
+        runner,
+        model,
+        portOpen: () => Promise.resolve(false),
+        fetch: () => Promise.resolve(new Response(null, { status: 503 })),
+      },
+    );
+
+    const report = await dependencies.doctor();
+
+    expect(report.prerequisitesOk).toBe(true);
+    expect(report.ok).toBe(true);
+    expect(
+      report.checks.find((check) => check.name === 'model-health')?.ok,
+    ).toBe(false);
+    expect(report.checks.map((check) => check.name)).toEqual(
+      expect.arrayContaining([
+        'node',
+        'pnpm',
+        'docker',
+        'compose',
+        'nvidia',
+        'port:5173',
+        'port:3001',
+        'port:8080',
+        'migration',
+        'model-installed',
+        'model-health',
+        'gateway-health',
+      ]),
+    );
+    const gpu = calls.find(
+      (call) => call.command === 'docker' && call.args[0] === 'run',
+    );
+    expect(gpu?.args.join(' ')).toContain('--gpus all');
+    expect(gpu?.args.join(' ')).toContain('--pull never');
+    expect(gpu?.args.join(' ')).toContain('--entrypoint nvidia-smi');
+    expect(gpu?.args.join(' ')).toMatch(
+      /ghcr\.io\/ggml-org\/llama\.cpp@sha256:[a-f0-9]{64}/u,
+    );
+  });
+});
