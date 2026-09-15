@@ -58,10 +58,11 @@ export class LlamaCppClient implements MoveSelector {
 
   async health(signal?: AbortSignal): Promise<ModelHealth> {
     try {
-      const response = await this.fetchWithTimeout(
-        `${this.baseUrl}/health`,
-        { method: 'GET' },
-        signal,
+      const response = await this.withAttemptTimeout(signal, (internalSignal) =>
+        this.fetcher(`${this.baseUrl}/health`, {
+          method: 'GET',
+          signal: internalSignal,
+        }),
       );
       if (!response.ok) {
         return {
@@ -136,29 +137,35 @@ export class LlamaCppClient implements MoveSelector {
     retryCount: 0 | 1,
   ): Promise<MoveSelection> {
     const startedAt = Date.now();
-    const response = await this.fetchWithTimeout(
-      `${this.baseUrl}/v1/chat/completions`,
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-      },
+    const parsed = await this.withAttemptTimeout(
       request.signal,
-    );
-    if (!response.ok) {
-      throw new HttpError(response.status);
-    }
+      async (internalSignal) => {
+        const response = await this.fetcher(
+          `${this.baseUrl}/v1/chat/completions`,
+          {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(body),
+            signal: internalSignal,
+          },
+        );
+        if (!response.ok) {
+          throw new HttpError(response.status);
+        }
 
-    let payload: unknown;
-    try {
-      payload = await response.json();
-    } catch {
-      throw new InvalidCompletionError('llama.cpp returned invalid JSON');
-    }
-    const parsed = parseCompletion(
-      payload,
-      request.candidates,
-      this.modelId ?? request.modelProfileId,
+        let payload: unknown;
+        try {
+          payload = await response.json();
+        } catch (error) {
+          if (internalSignal.aborted) throw error;
+          throw new InvalidCompletionError('llama.cpp returned invalid JSON');
+        }
+        return parseCompletion(
+          payload,
+          request.candidates,
+          this.modelId ?? request.modelProfileId,
+        );
+      },
     );
     const latencyMs = Math.max(0, Date.now() - startedAt);
     return {
@@ -168,14 +175,17 @@ export class LlamaCppClient implements MoveSelector {
     };
   }
 
-  private async fetchWithTimeout(
-    url: string,
-    init: RequestInit,
+  private async withAttemptTimeout<T>(
     signal?: AbortSignal,
-  ): Promise<Response> {
+    operation?: (internalSignal: AbortSignal) => Promise<T>,
+  ): Promise<T> {
     if (signal?.aborted) throw toAbortError();
+    if (operation === undefined) {
+      throw new Error('Attempt operation is required');
+    }
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let timedOut = false;
     let removeAbortListener: () => void = () => {};
     const callerAbort = signal
       ? new Promise<never>((_, reject) => {
@@ -187,18 +197,20 @@ export class LlamaCppClient implements MoveSelector {
       : new Promise<never>(() => {});
     const timeout = new Promise<never>((_, reject) => {
       timer = setTimeout(() => {
+        timedOut = true;
         controller.abort();
         reject(new TimeoutError());
       }, this.timeoutMs);
     });
     try {
-      const fetchPromise = this.fetcher(url, {
-        ...init,
-        signal: controller.signal,
-      });
-      return await Promise.race([fetchPromise, timeout, callerAbort]);
+      return await Promise.race([
+        operation(controller.signal),
+        timeout,
+        callerAbort,
+      ]);
     } catch (error) {
       if (signal?.aborted) throw toAbortError();
+      if (timedOut) throw new TimeoutError();
       throw error;
     } finally {
       if (timer !== undefined) clearTimeout(timer);
@@ -240,6 +252,16 @@ function parseCompletion(
   }
   if (!isRecord(selected)) {
     throw new InvalidCompletionError('llama.cpp selection is not an object');
+  }
+  const selectionKeys = Object.keys(selected);
+  if (
+    selectionKeys.length !== 2 ||
+    !selectionKeys.includes('move') ||
+    !selectionKeys.includes('commentary')
+  ) {
+    throw new InvalidCompletionError(
+      'llama.cpp selection contains unexpected keys',
+    );
   }
   const move = selected.move;
   const commentary = selected.commentary;
@@ -290,10 +312,7 @@ function nonnegativeOrNull(value: unknown): number | null {
 }
 
 function isAbortError(error: unknown, signal?: AbortSignal): boolean {
-  return (
-    signal?.aborted === true ||
-    (error instanceof DOMException && error.name === 'AbortError')
-  );
+  return signal?.aborted === true;
 }
 
 function toAbortError(): DOMException {

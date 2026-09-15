@@ -79,6 +79,47 @@ describe('llama.cpp HTTP boundary', () => {
     expect(JSON.stringify(body)).not.toContain('must never escape');
   });
 
+  it('keeps a successful response body readable after headers resolve', async () => {
+    const body = JSON.stringify({
+      id: 'chatcmpl-stream',
+      model: 'qwen3-4b-q4-k-m',
+      choices: [
+        {
+          message: {
+            role: 'assistant',
+            content: JSON.stringify({ move: 'e7e5', commentary: 'Develops.' }),
+          },
+        },
+      ],
+    });
+    const fetcher = vi.fn<typeof fetch>().mockImplementation((_input, init) =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              const encoder = new TextEncoder();
+              init?.signal?.addEventListener('abort', () =>
+                controller.error(new DOMException('Aborted', 'AbortError')),
+              );
+              queueMicrotask(() => {
+                if (!init?.signal?.aborted) {
+                  controller.enqueue(encoder.encode(body));
+                  controller.close();
+                }
+              });
+            },
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+    const client = new LlamaCppClient({ fetch: fetcher });
+
+    await expect(client.selectMove(request)).resolves.toMatchObject({
+      uci: 'e7e5',
+    });
+  });
+
   it('retries invalid JSON exactly once and reports retryCount one', async () => {
     const fetcher = vi
       .fn<typeof fetch>()
@@ -141,6 +182,51 @@ describe('llama.cpp HTTP boundary', () => {
     const client = new LlamaCppClient({ fetch: fetcher, timeoutMs: 1 });
 
     await expect(client.selectMove(request)).rejects.toThrow('timed out');
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it('times out a stalled response body and retries the attempt', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockImplementation((_input, init) =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              init?.signal?.addEventListener('abort', () =>
+                controller.error(new DOMException('Aborted', 'AbortError')),
+              );
+            },
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+    const client = new LlamaCppClient({ fetch: fetcher, timeoutMs: 5 });
+
+    await expect(client.selectMove(request)).rejects.toThrow('timed out');
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects extra response keys and retries with strict application validation', async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        completion(
+          JSON.stringify({
+            move: 'e7e5',
+            commentary: 'Develops.',
+            extra: 'must reject',
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        completion(JSON.stringify({ move: 'e7e5', commentary: 'Develops.' })),
+      );
+    const client = new LlamaCppClient({ fetch: fetcher });
+
+    await expect(client.selectMove(request)).resolves.toMatchObject({
+      uci: 'e7e5',
+      retryCount: 1,
+    });
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
