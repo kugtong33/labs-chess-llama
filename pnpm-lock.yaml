@@ -50,6 +50,16 @@ importers:
         specifier: ^4.6.5
         version: 4.6.5
 
+  packages/llama-protocol:
+    dependencies:
+      '@chess-llama/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+    devDependencies:
+      '@types/node':
+        specifier: ^26.5.1
+        version: 26.5.1
+
   packages/stockfish-adapter:
     dependencies:
       '@chess-llama/chess-domain':

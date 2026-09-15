@@ -1,0 +1,27 @@
+{
+  "id": "chatcmpl-fixture",
+  "object": "chat.completion",
+  "created": 1720000000,
+  "model": "qwen3-4b-q4-k-m",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\"move\":\"e7e5\",\"commentary\":\"Controls the centre.\"}",
+        "reasoning_content": "private reasoning"
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 40,
+    "completion_tokens": 12,
+    "total_tokens": 52
+  },
+  "timings": {
+    "prompt_n": 40,
+    "predicted_n": 12,
+    "predicted_per_second": 24.5
+  }
+}
