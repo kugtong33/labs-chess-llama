@@ -381,6 +381,26 @@ describe('Fastify gateway API', () => {
     expect(processLike.listenerCount('SIGINT')).toBe(0);
   });
 
+  it('reports shutdown failures and removes handlers after a rejected close', async () => {
+    const processLike = new EventEmitter() as EventEmitter & {
+      exitCode?: number;
+    };
+    const closeError = new Error('close failed');
+    const errors: Array<{ error: unknown; signal: string }> = [];
+    installShutdownHandlers(
+      processLike,
+      { close: () => Promise.reject(closeError) },
+      { error: (error, signal) => errors.push({ error, signal }) },
+    );
+    processLike.emit('SIGINT');
+    processLike.emit('SIGTERM');
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(errors).toEqual([{ error: closeError, signal: 'SIGINT' }]);
+    expect(processLike.exitCode).toBe(1);
+    expect(processLike.listenerCount('SIGTERM')).toBe(0);
+    expect(processLike.listenerCount('SIGINT')).toBe(0);
+  });
+
   it('attempts database cleanup after Stockfish failure and reuses its rejection', async () => {
     let databaseCloseCalls = 0;
     let stockfishCloseCalls = 0;

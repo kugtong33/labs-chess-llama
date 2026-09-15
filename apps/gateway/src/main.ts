@@ -31,7 +31,8 @@ export function installShutdownHandlers(
   let shutdown: Promise<void> | undefined;
   let removed = false;
   const onSignal = (signal: 'SIGINT' | 'SIGTERM') => {
-    shutdown ??= app.close();
+    if (shutdown) return;
+    shutdown = app.close();
     void shutdown.then(
       () => remove(),
       (error) => {
