@@ -1,0 +1,31 @@
+services:
+  llama:
+    image: ${CHESS_LLAMA_IMAGE}
+    container_name: chess-llama-model
+    gpus: all
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: [/tmp]
+    ports:
+      - '127.0.0.1:${CHESS_LLAMA_MODEL_PORT:-8080}:8080'
+    volumes:
+      - '${CHESS_LLAMA_MODEL_DIR}:/models:ro'
+    command:
+      - -m
+      - /models/${CHESS_LLAMA_MODEL_FILE}
+      - --host
+      - 0.0.0.0
+      - --port
+      - '8080'
+      - --ctx-size
+      - '4096'
+      - --n-gpu-layers
+      - '99'
+      - --flash-attn
+      - 'on'
+      - --parallel
+      - '1'
+      - --alias
+      - ${CHESS_LLAMA_MODEL_FILE}
+      - --no-webui

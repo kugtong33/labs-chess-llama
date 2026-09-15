@@ -1,0 +1,33 @@
+{
+  "name": "@chess-llama/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./paths": {
+      "types": "./dist/paths.d.ts",
+      "import": "./dist/paths.js"
+    },
+    "./runtime/model-manager": {
+      "types": "./dist/runtime/model-manager.d.ts",
+      "import": "./dist/runtime/model-manager.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts src/paths.ts src/runtime/model-manager.ts --format esm --dts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@chess-llama/storage": "workspace:*",
+    "commander": "^14.0.0",
+    "execa": "^9.6.0",
+    "zod": "^4.6.5"
+  }
+}

@@ -28,7 +28,7 @@ Sources:
 
 - [NVIDIA RTX 4060 specifications](https://www.nvidia.com/en-us/geforce/graphics-cards/40-series/rtx-4060-4060ti/)
 - [Qwen3-4B GGUF model card](https://huggingface.co/Qwen/Qwen3-4B-GGUF)
-- [Qwen3-1.7B GGUF repository](https://huggingface.co/Qwen/Qwen3-1.7B-GGUF)
+- [llama.cpp Qwen3-1.7B Q4_K_M GGUF repository](https://huggingface.co/ggml-org/Qwen3-1.7B-GGUF)
 
 ### A pure small LLM is not a credible chess engine
 

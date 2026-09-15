@@ -1059,7 +1059,7 @@ git commit -m "feat: expose local chess gateway API"
     },
     {
       "id": "qwen3-1.7b-q4-k-m",
-      "repository": "Qwen/Qwen3-1.7B-GGUF",
+      "repository": "ggml-org/Qwen3-1.7B-GGUF",
       "file": "Qwen3-1.7B-Q4_K_M.gguf",
       "quantization": "Q4_K_M",
       "contextSize": 4096,
@@ -1077,7 +1077,7 @@ The script must resolve the multi-platform image digest using:
 docker buildx imagetools inspect ghcr.io/ggml-org/llama.cpp:server-cuda --format '{{json .Manifest.Digest}}'
 ```
 
-For each profile, query `https://huggingface.co/api/models/<repository>?expand[]=siblings`, locate the exact filename, and read its LFS SHA-256 OID. Write `runtime-manifest.json` atomically with the image as `ghcr.io/ggml-org/llama.cpp@sha256:<digest>`, direct `resolve/main/<file>` URLs, checksums, and source fields. Validate the generated document before rename.
+For each profile, query `https://huggingface.co/api/models/<repository>?blobs=true`, locate the exact filename, and read its LFS SHA-256 OID. (`expand[]=siblings` returns filenames but omits LFS metadata.) Write `runtime-manifest.json` atomically with the image as `ghcr.io/ggml-org/llama.cpp@sha256:<digest>`, direct `resolve/main/<file>` URLs, checksums, and source fields. Validate the generated document before rename.
 
 Run: `pnpm tsx scripts/lock-runtime.mts`
 

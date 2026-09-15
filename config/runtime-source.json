@@ -1,0 +1,20 @@
+{
+  "image": "ghcr.io/ggml-org/llama.cpp:server-cuda",
+  "profiles": [
+    {
+      "id": "qwen3-4b-q4-k-m",
+      "repository": "Qwen/Qwen3-4B-GGUF",
+      "file": "Qwen3-4B-Q4_K_M.gguf",
+      "quantization": "Q4_K_M",
+      "contextSize": 4096
+    },
+    {
+      "id": "qwen3-1.7b-q4-k-m",
+      "repository": "ggml-org/Qwen3-1.7B-GGUF",
+      "file": "Qwen3-1.7B-Q4_K_M.gguf",
+      "quantization": "Q4_K_M",
+      "contextSize": 4096,
+      "experimental": true
+    }
+  ]
+}

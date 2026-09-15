@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-15T10:03:14.046Z",
+  "image": "ghcr.io/ggml-org/llama.cpp@sha256:5268283a8d6510d167364f19aee93e98180d8eb0cac4b7edb20af7e3edf40c17",
+  "source": {
+    "image": "ghcr.io/ggml-org/llama.cpp:server-cuda"
+  },
+  "profiles": [
+    {
+      "id": "qwen3-4b-q4-k-m",
+      "repository": "Qwen/Qwen3-4B-GGUF",
+      "file": "Qwen3-4B-Q4_K_M.gguf",
+      "quantization": "Q4_K_M",
+      "contextSize": 4096,
+      "url": "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf",
+      "sha256": "7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5",
+      "source": {
+        "repository": "Qwen/Qwen3-4B-GGUF",
+        "revision": "main"
+      }
+    },
+    {
+      "id": "qwen3-1.7b-q4-k-m",
+      "repository": "ggml-org/Qwen3-1.7B-GGUF",
+      "file": "Qwen3-1.7B-Q4_K_M.gguf",
+      "quantization": "Q4_K_M",
+      "contextSize": 4096,
+      "experimental": true,
+      "url": "https://huggingface.co/ggml-org/Qwen3-1.7B-GGUF/resolve/main/Qwen3-1.7B-Q4_K_M.gguf",
+      "sha256": "d2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5",
+      "source": {
+        "repository": "ggml-org/Qwen3-1.7B-GGUF",
+        "revision": "main"
+      }
+    }
+  ]
+}
