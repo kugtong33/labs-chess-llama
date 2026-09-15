@@ -13,6 +13,7 @@ import { GameServiceError } from './errors.js';
 import { buildApp, type GatewayDependencies } from './app.js';
 import { parseGatewayConfig } from './config.js';
 import { withAbort } from './routes/games.js';
+import { createResourceCleanup, installShutdownHandlers } from './main.js';
 
 const gameId = '11111111-1111-4111-8111-111111111111';
 const game: GameView = {
@@ -359,6 +360,49 @@ describe('Fastify gateway API', () => {
     });
     completedRaw.emit('close');
     expect(completedSignal.aborted).toBe(false);
+  });
+
+  it('closes the app once for process signals and removes both handlers', async () => {
+    const processLike = new EventEmitter() as EventEmitter & {
+      exitCode?: number;
+    };
+    let appCloseCalls = 0;
+    installShutdownHandlers(processLike, {
+      close: () =>
+        Promise.resolve().then(() => {
+          appCloseCalls += 1;
+        }),
+    });
+    processLike.emit('SIGTERM');
+    processLike.emit('SIGINT');
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(appCloseCalls).toBe(1);
+    expect(processLike.listenerCount('SIGTERM')).toBe(0);
+    expect(processLike.listenerCount('SIGINT')).toBe(0);
+  });
+
+  it('attempts database cleanup after Stockfish failure and reuses its rejection', async () => {
+    let databaseCloseCalls = 0;
+    let stockfishCloseCalls = 0;
+    const closeError = new Error('stockfish close failed');
+    const cleanup = createResourceCleanup(
+      {
+        open: true,
+        close: () => {
+          databaseCloseCalls += 1;
+        },
+      },
+      {
+        close: () => {
+          stockfishCloseCalls += 1;
+          return Promise.reject(closeError);
+        },
+      },
+    );
+    await expect(cleanup()).rejects.toBe(closeError);
+    await expect(cleanup()).rejects.toBe(closeError);
+    expect(stockfishCloseCalls).toBe(1);
+    expect(databaseCloseCalls).toBe(1);
   });
 
   it('defaults to loopback-only configuration and rejects non-loopback hosts', () => {
