@@ -22,6 +22,7 @@ export default tseslint.config(
           allowDefaultProject: [
             'eslint.config.mjs',
             'vitest.config.ts',
+            'apps/client/vite.config.ts',
             'packages/storage/drizzle.config.ts',
           ],
         },
