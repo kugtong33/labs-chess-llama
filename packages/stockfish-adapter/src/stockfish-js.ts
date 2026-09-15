@@ -3,7 +3,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createInterface, type Interface } from 'node:readline';
 
 import { filterCredibleCandidates, joinLegalMoves } from './filter.js';
-import { parseInfoLine } from './uci-parser.js';
+import { parseInfoLines } from './uci-parser.js';
 import type {
   AnalysisRequest,
   RankedCandidate,
@@ -44,9 +44,10 @@ export class StockfishJsAnalyzer implements StockfishAnalyzer {
     this.closed = true;
     await this.queue;
     if (this.child !== null) {
-      this.send('quit');
+      void this.send('quit');
       this.child.kill();
       this.child = null;
+      this.stdinReady = Promise.resolve();
     }
     this.lines?.close();
     this.lines = null;
@@ -64,23 +65,27 @@ export class StockfishJsAnalyzer implements StockfishAnalyzer {
     this.lines.on('line', (line) => {
       for (const listener of this.lineListeners) listener(line);
     });
-    child.stdin.on('error', (error) => this.emitError(error));
-    child.once('error', (error) => this.emitError(error));
+    child.stdin.once('error', (error) => this.markDead(child, error));
+    child.stdin.once('close', () =>
+      this.markDead(child, new Error('Stockfish stdin closed')),
+    );
+    child.once('error', (error) => this.markDead(child, error));
     child.once('exit', (code, signal) => {
       if (!this.closed && this.child === child) {
-        this.emitError(
+        this.markDead(
+          child,
           new Error(`Stockfish exited (${code ?? `signal ${signal}`})`),
         );
       }
     });
 
     try {
-      this.send('uci');
+      await this.send('uci');
       await this.waitFor((line) => line.trim() === 'uciok', 10_000);
-      this.send('isready');
+      await this.send('isready');
       await this.waitFor((line) => line.trim() === 'readyok', 10_000);
     } catch (error) {
-      this.killProcess();
+      if (this.child === child) this.killProcess();
       throw error;
     }
   }
@@ -88,22 +93,28 @@ export class StockfishJsAnalyzer implements StockfishAnalyzer {
   private async runAnalysis(
     request: AnalysisRequest,
   ): Promise<RankedCandidate[]> {
-    if (request.signal?.aborted)
-      throw new DOMException('Aborted', 'AbortError');
-    await this.start();
-    if (request.candidateLimit < 1) return [];
-
-    const lines: string[] = [];
+    const abortError = new DOMException('Aborted', 'AbortError');
+    let cancellation: Promise<void> | null = null;
     const onAbort = () => {
-      this.send('stop');
-      this.killProcess(new DOMException('Aborted', 'AbortError'));
+      if (cancellation === null) {
+        cancellation = this.stopAndKill(abortError);
+      }
     };
     request.signal?.addEventListener('abort', onAbort, { once: true });
 
     try {
-      this.send(`setoption name MultiPV value ${request.candidateLimit}`);
-      this.send(`position fen ${request.fen}`);
-      this.send(`go movetime ${Math.max(1, request.moveTimeMs)}`);
+      if (request.signal?.aborted) {
+        onAbort();
+        throw abortError;
+      }
+      await this.start();
+      if (request.signal?.aborted) throw abortError;
+      if (request.candidateLimit < 1) return [];
+
+      const lines: string[] = [];
+      await this.send(`setoption name MultiPV value ${request.candidateLimit}`);
+      await this.send(`position fen ${request.fen}`);
+      await this.send(`go movetime ${Math.max(1, request.moveTimeMs)}`);
       await this.waitFor(
         (line) => {
           if (line.startsWith('info ')) lines.push(line);
@@ -116,10 +127,7 @@ export class StockfishJsAnalyzer implements StockfishAnalyzer {
         throw new DOMException('Aborted', 'AbortError');
       }
 
-      const parsed = lines.flatMap((line) => {
-        const info = parseInfoLine(line);
-        return info === null ? [] : [info];
-      });
+      const parsed = parseInfoLines(lines);
       const legal = new Map(
         request.legalMoves.map((move) => [move.uci, move.san]),
       );
@@ -139,7 +147,8 @@ export class StockfishJsAnalyzer implements StockfishAnalyzer {
       ).slice(0, request.candidateLimit);
     } catch (error) {
       if (request.signal?.aborted) {
-        throw new DOMException('Aborted', 'AbortError');
+        if (cancellation !== null) await Promise.resolve(cancellation);
+        throw abortError;
       }
       if (error instanceof TimeoutError) this.killProcess();
       throw error;
@@ -148,35 +157,69 @@ export class StockfishJsAnalyzer implements StockfishAnalyzer {
     }
   }
 
-  private send(command: string): void {
+  private send(command: string): Promise<void> {
     const child = this.child;
-    if (child === null || child.stdin.destroyed) return;
-    this.stdinReady = this.stdinReady
-      .then(() => {
-        if (child.stdin.destroyed) return;
-        if (child.stdin.write(`${command}\n`)) return;
-        return new Promise<void>((resolve, reject) => {
-          const cleanup = () => {
-            child.stdin.removeListener('drain', onDrain);
-            child.stdin.removeListener('error', onError);
-          };
-          const onDrain = () => {
-            cleanup();
-            resolve();
-          };
-          const onError = (error: Error) => {
-            cleanup();
-            reject(error);
-          };
-          child.stdin.once('drain', onDrain);
-          child.stdin.once('error', onError);
-        });
-      })
-      .catch((error: unknown) => {
-        this.emitError(
-          error instanceof Error ? error : new Error(String(error)),
+    if (child === null || child.stdin.destroyed) return Promise.resolve();
+    const write = this.stdinReady.then(() => this.writeCommand(child, command));
+    this.stdinReady = write.catch(() => undefined);
+    return write;
+  }
+
+  private writeCommand(
+    child: ChildProcessWithoutNullStreams,
+    command: string,
+  ): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      let callbackDone = false;
+      let drainDone = true;
+      const cleanup = () => {
+        child.stdin.removeListener('drain', onDrain);
+        child.stdin.removeListener('error', onError);
+        child.stdin.removeListener('close', onClose);
+        child.removeListener('exit', onExit);
+      };
+      const finish = () => {
+        if (callbackDone && drainDone) {
+          cleanup();
+          resolve();
+        }
+      };
+      const onDrain = () => {
+        drainDone = true;
+        finish();
+      };
+      const onError = (error: Error) => {
+        cleanup();
+        reject(error);
+      };
+      const onClose = () => {
+        cleanup();
+        reject(new Error('Stockfish stdin closed before draining'));
+      };
+      const onExit = () => {
+        cleanup();
+        reject(new Error('Stockfish exited before stdin drained'));
+      };
+      child.stdin.once('drain', onDrain);
+      child.stdin.once('error', onError);
+      child.stdin.once('close', onClose);
+      child.once('exit', onExit);
+      try {
+        drainDone = child.stdin.write(
+          `${command}\n`,
+          (error?: Error | null) => {
+            if (error !== undefined && error !== null) {
+              onError(error);
+              return;
+            }
+            callbackDone = true;
+            finish();
+          },
         );
-      });
+      } catch (error) {
+        onError(error instanceof Error ? error : new Error(String(error)));
+      }
+    });
   }
 
   private waitFor(predicate: (line: string) => boolean, timeoutMs: number) {
@@ -208,12 +251,32 @@ export class StockfishJsAnalyzer implements StockfishAnalyzer {
     for (const listener of [...this.errorListeners]) listener(error);
   }
 
+  private markDead(child: ChildProcessWithoutNullStreams, error: Error): void {
+    if (this.child !== child) return;
+    this.child = null;
+    this.lines?.close();
+    this.lines = null;
+    this.stdinReady = Promise.resolve();
+    if (!this.closed) this.emitError(error);
+  }
+
+  private async stopAndKill(error: Error): Promise<void> {
+    const stop = this.send('stop').catch(() => undefined);
+    await Promise.race([
+      stop,
+      new Promise<void>((resolve) => setTimeout(resolve, 250)),
+    ]);
+    this.emitError(error);
+    this.killProcess();
+  }
+
   private killProcess(error?: Error): void {
     if (error !== undefined) this.emitError(error);
     this.lines?.close();
     this.lines = null;
     this.child?.kill();
     this.child = null;
+    this.stdinReady = Promise.resolve();
   }
 }
 
