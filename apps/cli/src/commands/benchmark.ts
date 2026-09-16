@@ -1,0 +1,418 @@
+import { constants } from 'node:fs';
+import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { cpus, totalmem } from 'node:os';
+import { join } from 'node:path';
+import { arch, platform, version as nodeVersion } from 'node:process';
+
+import { legalMoves, reconstructGame } from '@chess-llama/chess-domain';
+import { LlamaCppClient } from '@chess-llama/llama-protocol';
+import { StockfishJsAnalyzer } from '@chess-llama/stockfish-adapter';
+import type { Command } from 'commander';
+
+import type { CliDependencies } from '../dependencies.js';
+import {
+  CliFailure,
+  exitCodes,
+  parseOutputFormat,
+  PassthroughExit,
+} from '../output.js';
+import { outputFor } from '../program.js';
+import type { ChessLlamaPaths } from '../paths.js';
+import type { RuntimeManifest, RuntimeProfile } from '../runtime/types.js';
+
+const FIXTURE_URL = new URL(
+  '../../../../tests/fixtures/benchmarks/positions.json',
+  import.meta.url,
+);
+const MAX_CANDIDATE_LOSS_CP = 150;
+const CANDIDATE_LIMIT = 5;
+const MOVE_TIME_MS = 100;
+
+export interface BenchmarkFixture {
+  id: string;
+  category: string;
+  fen: string;
+}
+
+export interface BenchmarkSelection {
+  uci: string;
+  commentary: string;
+  modelId: string;
+  latencyMs: number;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  tokensPerSecond: number | null;
+  retryCount: 0 | 1;
+}
+
+export interface BenchmarkPositionResult {
+  id: string;
+  category: string;
+  candidates: readonly string[];
+  selection: BenchmarkSelection | null;
+  error?: string;
+}
+
+export interface BenchmarkSummary {
+  totalPositions: number;
+  candidateMembership: number;
+  firstAttemptSuccess: number;
+  successAfterRetry: number;
+  medianLatencyMs: number | null;
+  commentarySamples: string[];
+  qualified: boolean;
+  status: 'PASS' | 'FAIL';
+}
+
+export interface BenchmarkProfileReport {
+  profileId: string;
+  positions: BenchmarkPositionResult[];
+  summary: BenchmarkSummary;
+}
+
+export interface BenchmarkReport {
+  schemaVersion: 1;
+  generatedAt: string;
+  runtimeManifest: {
+    schemaVersion: number;
+    image: string;
+    generatedAt: string;
+  };
+  hardware: {
+    platform: string;
+    arch: string;
+    nodeVersion: string;
+    cpuModel: string | null;
+    logicalCpuCount: number;
+    memoryBytes: number;
+    accelerator: 'reported-by-llama-server';
+  };
+  profiles: BenchmarkProfileReport[];
+  qualified: boolean;
+  status: 'PASS' | 'FAIL';
+  reportFile?: string;
+}
+
+export interface BenchmarkHumanRow {
+  profile: string;
+  status: 'PASS' | 'FAIL';
+  positions: number;
+  candidateMembership: string;
+  firstAttemptSuccess: string;
+  successAfterRetry: string;
+  medianLatencyMs: number | null;
+  commentarySamples: string;
+  reportFile: string;
+}
+
+export interface BenchmarkDependencies {
+  run(
+    profileIds: readonly string[],
+    signal?: AbortSignal,
+  ): Promise<BenchmarkReport>;
+}
+
+interface InstalledBenchmarkOptions {
+  paths: Pick<ChessLlamaPaths, 'benchmarksDir' | 'modelDir'>;
+  manifest: RuntimeManifest;
+  profileIds: readonly string[];
+  now?: () => Date;
+  signal?: AbortSignal;
+}
+
+export function aggregateBenchmarkResults(
+  positions: readonly BenchmarkPositionResult[],
+): BenchmarkSummary {
+  const validSelections = positions.filter((position) =>
+    isCandidateSelection(position),
+  );
+  const firstAttempt = validSelections.filter(
+    (position) => position.selection?.retryCount === 0,
+  );
+  const latencies = positions
+    .flatMap((position) =>
+      position.selection === null ? [] : [position.selection.latencyMs],
+    )
+    .sort((left, right) => left - right);
+  const total = positions.length;
+
+  const candidateMembership = fraction(validSelections.length, total);
+  const firstAttemptSuccess = fraction(firstAttempt.length, total);
+  const successAfterRetry = fraction(validSelections.length, total);
+  const medianLatencyMs = median(latencies);
+
+  const qualified =
+    candidateMembership === 1 &&
+    firstAttemptSuccess >= 0.95 &&
+    successAfterRetry === 1 &&
+    medianLatencyMs !== null &&
+    medianLatencyMs < 3_000;
+
+  return {
+    totalPositions: total,
+    candidateMembership,
+    firstAttemptSuccess,
+    successAfterRetry,
+    medianLatencyMs,
+    commentarySamples: positions.flatMap((position) =>
+      position.selection === null ? [] : [position.selection.commentary],
+    ),
+    qualified,
+    status: qualified ? 'PASS' : 'FAIL',
+  };
+}
+
+export function benchmarkHumanRows(
+  report: BenchmarkReport,
+): BenchmarkHumanRow[] {
+  return report.profiles.map(({ profileId, summary }) => ({
+    profile: profileId,
+    status: summary.status,
+    positions: summary.totalPositions,
+    candidateMembership: percent(summary.candidateMembership),
+    firstAttemptSuccess: percent(summary.firstAttemptSuccess),
+    successAfterRetry: percent(summary.successAfterRetry),
+    medianLatencyMs: summary.medianLatencyMs,
+    commentarySamples: summary.commentarySamples.join(' | '),
+    reportFile: report.reportFile ?? '',
+  }));
+}
+
+export async function runInstalledBenchmarks(
+  options: InstalledBenchmarkOptions,
+): Promise<BenchmarkReport> {
+  const profiles = selectProfiles(options.manifest, options.profileIds);
+  const fixtures = await loadFixtures();
+  const reports: BenchmarkProfileReport[] = [];
+
+  for (const profile of profiles) {
+    await requireModelFile(options.paths.modelDir, profile);
+    reports.push(await runProfileBenchmark(profile, fixtures, options.signal));
+  }
+
+  const generatedAt = (options.now ?? (() => new Date()))().toISOString();
+  const qualified =
+    reports.length > 0 && reports.every((item) => item.summary.qualified);
+  const report: BenchmarkReport = {
+    schemaVersion: 1,
+    generatedAt,
+    runtimeManifest: {
+      schemaVersion: options.manifest.schemaVersion,
+      image: options.manifest.image,
+      generatedAt: options.manifest.generatedAt,
+    },
+    hardware: {
+      platform,
+      arch,
+      nodeVersion,
+      cpuModel: cpus()[0]?.model ?? null,
+      logicalCpuCount: cpus().length,
+      memoryBytes: totalmem(),
+      accelerator: 'reported-by-llama-server',
+    },
+    profiles: reports,
+    qualified,
+    status: qualified ? 'PASS' : 'FAIL',
+  };
+  await mkdir(options.paths.benchmarksDir, { recursive: true });
+  const reportFile = join(
+    options.paths.benchmarksDir,
+    `benchmark-${generatedAt.replace(/[:.]/gu, '-')}.json`,
+  );
+  await writeFile(reportFile, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+  return { ...report, reportFile };
+}
+
+export function registerBenchmarkCommand(
+  model: Command,
+  dependencies: CliDependencies,
+): void {
+  model
+    .command('benchmark')
+    .description('qualify installed model profiles against the position suite')
+    .option(
+      '--profile <id>',
+      'profile to benchmark (repeatable)',
+      collectProfile,
+      [],
+    )
+    .option('--format <format>', 'output format', 'human')
+    .action(
+      async (options: { profile: string[]; format?: 'json' | 'human' }) => {
+        const format = parseOutputFormat(options.format);
+        if (dependencies.benchmark === undefined) {
+          throw new CliFailure(
+            'Benchmark dependencies are not configured',
+            exitCodes.prerequisite,
+          );
+        }
+        const report = await dependencies.benchmark.run(
+          options.profile,
+          dependencies.signal,
+        );
+        outputFor(dependencies).write(
+          format === 'human' ? benchmarkHumanRows(report) : report,
+          format,
+        );
+        if (!report.qualified) {
+          throw new PassthroughExit('Benchmark qualification failed', 1);
+        }
+      },
+    );
+}
+
+async function runProfileBenchmark(
+  profile: RuntimeProfile,
+  fixtures: readonly BenchmarkFixture[],
+  signal?: AbortSignal,
+): Promise<BenchmarkProfileReport> {
+  const analyzer = await StockfishJsAnalyzer.create();
+  const selector = new LlamaCppClient({
+    modelId: profile.file,
+    profileId: profile.id,
+    quantization: profile.quantization,
+    backend: 'CUDA',
+  });
+  try {
+    const positions: BenchmarkPositionResult[] = [];
+    for (const fixture of fixtures) {
+      signal?.throwIfAborted();
+      const chess = reconstructGame([], fixture.fen);
+      const candidates = await analyzer.analyze({
+        fen: fixture.fen,
+        legalMoves: legalMoves(chess),
+        candidateLimit: CANDIDATE_LIMIT,
+        moveTimeMs: MOVE_TIME_MS,
+        maxLossCp: MAX_CANDIDATE_LOSS_CP,
+        signal,
+      });
+      try {
+        const selection = await selector.selectMove({
+          fen: fixture.fen,
+          sanHistory: [],
+          candidates,
+          commentaryStyle: 'concise',
+          modelProfileId: profile.id,
+          signal,
+        });
+        positions.push({
+          id: fixture.id,
+          category: fixture.category,
+          candidates: candidates.map((candidate) => candidate.uci),
+          selection: {
+            uci: selection.uci,
+            commentary: selection.commentary,
+            modelId: selection.modelId,
+            latencyMs: selection.latencyMs,
+            promptTokens: selection.promptTokens,
+            completionTokens: selection.completionTokens,
+            tokensPerSecond: selection.tokensPerSecond,
+            retryCount: selection.retryCount,
+          },
+        });
+      } catch (error) {
+        if (signal?.aborted) throw error;
+        positions.push({
+          id: fixture.id,
+          category: fixture.category,
+          candidates: candidates.map((candidate) => candidate.uci),
+          selection: null,
+          error: messageFor(error),
+        });
+      }
+    }
+    return {
+      profileId: profile.id,
+      positions,
+      summary: aggregateBenchmarkResults(positions),
+    };
+  } finally {
+    await analyzer.close();
+  }
+}
+
+async function loadFixtures(): Promise<BenchmarkFixture[]> {
+  const value: unknown = JSON.parse(await readFile(FIXTURE_URL, 'utf8'));
+  if (!isFixtureArray(value)) {
+    throw new CliFailure('Benchmark fixture is invalid', exitCodes.input);
+  }
+  return value;
+}
+
+async function requireModelFile(
+  modelDir: string,
+  profile: RuntimeProfile,
+): Promise<void> {
+  try {
+    await access(join(modelDir, profile.file), constants.R_OK);
+  } catch (error) {
+    throw new CliFailure(
+      `Model weights are missing for profile ${profile.id}; run chess-llama model pull --profile ${profile.id}`,
+      exitCodes.prerequisite,
+      { cause: error },
+    );
+  }
+}
+
+function selectProfiles(
+  manifest: RuntimeManifest,
+  requested: readonly string[],
+): RuntimeProfile[] {
+  const ids = requested.length === 0 ? [manifest.profiles[0]?.id] : requested;
+  const profiles = ids.map((id) =>
+    manifest.profiles.find((profile) => profile.id === id),
+  );
+  if (profiles.some((profile) => profile === undefined)) {
+    throw new CliFailure('Unknown benchmark model profile', exitCodes.input);
+  }
+  return profiles as RuntimeProfile[];
+}
+
+function isCandidateSelection(position: BenchmarkPositionResult): boolean {
+  return (
+    position.selection !== null &&
+    position.candidates.includes(position.selection.uci)
+  );
+}
+
+function fraction(numerator: number, denominator: number): number {
+  return denominator === 0 ? 0 : numerator / denominator;
+}
+
+function percent(value: number): string {
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+function median(values: readonly number[]): number | null {
+  if (values.length === 0) return null;
+  const middle = Math.floor(values.length / 2);
+  if (values.length % 2 === 1) return values[middle] ?? null;
+  const left = values[middle - 1];
+  const right = values[middle];
+  return left === undefined || right === undefined ? null : (left + right) / 2;
+}
+
+function collectProfile(value: string, previous: string[]): string[] {
+  return [...previous, value];
+}
+
+function isFixture(value: unknown): value is BenchmarkFixture {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'id' in value &&
+    'category' in value &&
+    'fen' in value &&
+    typeof value.id === 'string' &&
+    typeof value.category === 'string' &&
+    typeof value.fen === 'string'
+  );
+}
+
+function isFixtureArray(value: unknown): value is BenchmarkFixture[] {
+  return Array.isArray(value) && value.every((item) => isFixture(item));
+}
+
+function messageFor(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}

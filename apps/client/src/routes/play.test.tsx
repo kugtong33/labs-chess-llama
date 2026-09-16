@@ -268,6 +268,25 @@ describe('Play route', () => {
     expect(board.options?.animationDurationInMs).toBe(0);
   });
 
+  it('owns stable square and piece hooks for browser acceptance tests', async () => {
+    render(
+      <App gateway={fakeGateway()} initialEntries={[`/games/${gameId}`]} />,
+    );
+    await screen.findByLabelText('Chessboard');
+
+    const square = render(
+      board.options?.squareRenderer?.({
+        square: 'e2',
+        piece: { pieceType: 'wP' },
+        children: <span>piece</span>,
+      }) ?? null,
+    );
+    expect(
+      square.container.querySelector('[data-square="e2"]'),
+    ).toHaveAttribute('data-piece', 'wP');
+    square.unmount();
+  });
+
   it('aborts a move on navigation and refreshes stale 409 state', async () => {
     const user = userEvent.setup();
     let moveSignal: AbortSignal | undefined;

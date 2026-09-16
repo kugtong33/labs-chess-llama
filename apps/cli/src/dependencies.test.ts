@@ -11,6 +11,55 @@ import {
 } from './dependencies.js';
 
 describe('default CLI dependencies', () => {
+  it('launches the gateway with the resolved persistent database path', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'chess-llama-gateway-env-'));
+    const databaseFile = join(root, 'data', 'chess-llama.sqlite');
+    const launches: Array<{
+      command: string;
+      environment?: Record<string, string>;
+    }> = [];
+    const dependencies = await createDefaultDependencies(
+      {
+        configFile: join(root, 'config', 'config.json'),
+        databaseFile,
+        backupsDir: join(root, 'data', 'backups'),
+        benchmarksDir: join(root, 'data', 'benchmarks'),
+        modelDir: join(root, 'cache', 'models'),
+        composeFile: join(root, 'compose.yaml'),
+      },
+      {
+        runner: {
+          run(command, _args, _signal, environment) {
+            launches.push({ command, environment });
+            return Promise.resolve({ exitCode: 0, stdout: '', stderr: '' });
+          },
+        },
+      },
+    );
+
+    await dependencies.gateway.dev();
+    await dependencies.gateway.start();
+
+    expect(launches).toEqual([
+      {
+        command: 'pnpm',
+        environment: {
+          DATABASE_PATH: databaseFile,
+          LLAMA_BASE_URL: 'http://127.0.0.1:8080',
+          CLIENT_ORIGIN: 'http://127.0.0.1:5173',
+        },
+      },
+      {
+        command: 'node',
+        environment: {
+          DATABASE_PATH: databaseFile,
+          LLAMA_BASE_URL: 'http://127.0.0.1:8080',
+          CLIENT_ORIGIN: 'http://127.0.0.1:5173',
+        },
+      },
+    ]);
+  });
+
   it('runs every doctor check with the pinned GPU image and separates prerequisites', async () => {
     const root = await mkdtemp(join(tmpdir(), 'chess-llama-doctor-'));
     const modelDir = join(root, 'cache', 'models');

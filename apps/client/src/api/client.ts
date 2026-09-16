@@ -103,9 +103,9 @@ export class GatewayClient implements GatewayApi {
   readonly #baseUrl: string;
   readonly #fetch: Fetcher;
 
-  public constructor(baseUrl: string, fetcher: Fetcher = fetch) {
+  public constructor(baseUrl: string, fetcher?: Fetcher) {
     this.#baseUrl = baseUrl.replace(/\/+$/u, '');
-    this.#fetch = fetcher;
+    this.#fetch = fetcher ?? globalThis.fetch.bind(globalThis);
   }
 
   public health(signal?: AbortSignal): Promise<HealthResponse> {

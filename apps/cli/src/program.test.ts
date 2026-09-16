@@ -111,6 +111,7 @@ describe('chess-llama command tree', () => {
       'gateway dev',
       'gateway health',
       'gateway start',
+      'model benchmark',
       'model logs',
       'model pull',
       'model start',

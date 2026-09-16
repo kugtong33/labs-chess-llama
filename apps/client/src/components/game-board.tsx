@@ -45,6 +45,15 @@ export function GameBoard({
             darkSquareStyle: { backgroundColor: '#49664f' },
             lightSquareStyle: { backgroundColor: '#e7dfcd' },
             boardStyle: { borderRadius: '10px' },
+            squareRenderer: ({ square, piece, children }) => (
+              <div
+                data-square={square}
+                data-piece={piece?.pieceType ?? ''}
+                style={{ width: '100%', height: '100%' }}
+              >
+                {children}
+              </div>
+            ),
             canDragPiece: ({ piece }) =>
               !disabled &&
               piece.pieceType.startsWith(humanColor === 'white' ? 'w' : 'b'),

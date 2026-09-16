@@ -16,6 +16,10 @@ import { resolveChessLlamaPaths, type ChessLlamaPaths } from './paths.js';
 import { ModelManager } from './runtime/model-manager.js';
 import { sha256File } from './runtime/download.js';
 import type { DockerResult, RuntimeManifest } from './runtime/types.js';
+import {
+  runInstalledBenchmarks,
+  type BenchmarkDependencies,
+} from './commands/benchmark.js';
 
 export interface Output {
   write(value: unknown, format?: 'json' | 'human'): void;
@@ -27,6 +31,7 @@ export interface ProcessRunner {
     command: string,
     args: readonly string[],
     signal?: AbortSignal,
+    environment?: Readonly<Record<string, string>>,
   ): Promise<DockerResult>;
 }
 
@@ -83,6 +88,7 @@ export interface CliDependencies {
   signal?: AbortSignal;
   defaultProfile?: string;
   preferredProfile?: () => Promise<string | undefined>;
+  benchmark?: BenchmarkDependencies;
   events?: string[];
 }
 
@@ -114,8 +120,12 @@ export async function createDefaultDependencies(
       paths: { modelDir: paths.modelDir, composeFile: paths.composeFile },
     });
   const runner: ProcessRunner = adapters.runner ?? {
-    async run(command, args, signal) {
-      const result = await execa(command, args, { reject: false, signal });
+    async run(command, args, signal, environment) {
+      const result = await execa(command, args, {
+        reject: false,
+        signal,
+        env: environment,
+      });
       return {
         exitCode: result.exitCode ?? 1,
         stdout: String(result.stdout),
@@ -159,8 +169,9 @@ export async function createDefaultDependencies(
     command: string,
     args: readonly string[],
     signal?: AbortSignal,
+    environment?: Readonly<Record<string, string>>,
   ) => {
-    const result = await runner.run(command, args, signal);
+    const result = await runner.run(command, args, signal, environment);
     if (result.exitCode !== 0)
       throw Object.assign(new Error(result.stderr || `${command} failed`), {
         exitCode: result.exitCode,
@@ -178,6 +189,7 @@ export async function createDefaultDependencies(
     command: string,
     args: readonly string[],
     signal?: AbortSignal,
+    environment?: Readonly<Record<string, string>>,
   ): Promise<DockerResult> => {
     const existing = kind === 'gateway' ? gatewayProcess : clientProcess;
     if (existing) return existing.completion;
@@ -189,12 +201,14 @@ export async function createDefaultDependencies(
       controller,
       completion: Promise.resolve({ exitCode: 0, stdout: '', stderr: '' }),
     };
-    managed.completion = run(command, args, combined).finally(() => {
-      if (kind === 'gateway' && gatewayProcess === managed)
-        gatewayProcess = undefined;
-      if (kind === 'client' && clientProcess === managed)
-        clientProcess = undefined;
-    });
+    managed.completion = run(command, args, combined, environment).finally(
+      () => {
+        if (kind === 'gateway' && gatewayProcess === managed)
+          gatewayProcess = undefined;
+        if (kind === 'client' && clientProcess === managed)
+          clientProcess = undefined;
+      },
+    );
     if (kind === 'gateway') gatewayProcess = managed;
     else clientProcess = managed;
     return managed.completion;
@@ -218,9 +232,16 @@ export async function createDefaultDependencies(
           'pnpm',
           ['exec', 'tsx', 'apps/gateway/src/main.ts'],
           signal,
+          gatewayEnvironment(paths.databaseFile),
         ),
       start: (signal) =>
-        launch('gateway', 'node', ['apps/gateway/dist/main.js'], signal),
+        launch(
+          'gateway',
+          'node',
+          ['apps/gateway/dist/main.js'],
+          signal,
+          gatewayEnvironment(paths.databaseFile),
+        ),
       stop: async () => {
         await stopManaged(gatewayProcess);
       },
@@ -281,6 +302,15 @@ export async function createDefaultDependencies(
         await stopManaged(clientProcess);
       },
       isRunning: () => (adapters.portOpen ?? isPortOpen)(5173),
+    },
+    benchmark: {
+      run: (profileIds, signal) =>
+        runInstalledBenchmarks({
+          paths,
+          manifest,
+          profileIds,
+          signal,
+        }),
     },
     defaultProfile: DEFAULT_PROFILE,
     preferredProfile: () => {
@@ -437,6 +467,14 @@ export async function createDefaultDependencies(
         checks,
       };
     },
+  };
+}
+
+function gatewayEnvironment(databaseFile: string): Record<string, string> {
+  return {
+    DATABASE_PATH: databaseFile,
+    LLAMA_BASE_URL: 'http://127.0.0.1:8080',
+    CLIENT_ORIGIN: 'http://127.0.0.1:5173',
   };
 }
 

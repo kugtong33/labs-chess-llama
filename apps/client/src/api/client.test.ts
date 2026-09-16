@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { GatewayClient, GatewayConnectionError } from './client.js';
 
@@ -29,6 +29,22 @@ function jsonResponse(
 }
 
 describe('GatewayClient', () => {
+  it('invokes the default browser fetch with the global receiver', async () => {
+    let usedGlobalReceiver = false;
+    vi.stubGlobal('fetch', function (this: unknown) {
+      usedGlobalReceiver = this === globalThis;
+      if (this !== globalThis) throw new TypeError('Illegal invocation');
+      return Promise.resolve(jsonResponse([]));
+    });
+    try {
+      const client = new GatewayClient('http://127.0.0.1:3001');
+      await expect(client.listGames()).resolves.toEqual([]);
+      expect(usedGlobalReceiver).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('parses successful responses and problem details', async () => {
     const responses = [
       jsonResponse(game),

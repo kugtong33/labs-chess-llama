@@ -1,0 +1,42 @@
+[
+  {
+    "id": "opening-start",
+    "category": "opening",
+    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+  },
+  {
+    "id": "opening-after-e4",
+    "category": "opening",
+    "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1"
+  },
+  {
+    "id": "castle-both-sides",
+    "category": "castling",
+    "fen": "r3k2r/pppq1ppp/2npbn2/3Np3/3P4/2N1P3/PPPQ1PPP/R3K2R w KQkq - 4 10"
+  },
+  {
+    "id": "en-passant",
+    "category": "en-passant",
+    "fen": "rnbqkbnr/ppp1pppp/8/3pP3/8/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 3"
+  },
+  {
+    "id": "promotion",
+    "category": "promotion",
+    "fen": "8/P7/8/8/8/8/7k/5K2 w - - 0 1"
+  },
+  {
+    "id": "mate-in-one",
+    "category": "forced-mate",
+    "fen": "7k/8/5KQ1/8/8/8/8/8 w - - 0 1"
+  },
+  {
+    "id": "rook-endgame",
+    "category": "endgame",
+    "fen": "8/5pk1/6p1/8/4R3/7P/5PP1/6K1 w - - 0 1"
+  },
+  {
+    "id": "isolated-queen-pawn",
+    "category": "positional",
+    "fen": "r1bq1rk1/pp2bppp/2n1pn2/2pp4/3P4/2NBPN2/PPQ2PPP/R1B2RK1 w - - 4 9"
+  }
+]

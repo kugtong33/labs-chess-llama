@@ -8,16 +8,22 @@
   },
   "scripts": {
     "build": "pnpm -r build",
-    "typecheck": "pnpm -r typecheck",
+    "chess-llama": "tsx apps/cli/src/index.ts",
+    "typecheck": "pnpm -r typecheck && tsc --noEmit -p scripts/tsconfig.json && tsc --noEmit -p tests/tsconfig.json",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
     "test:watch": "vitest",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "notices": "tsx scripts/generate-third-party-notices.mts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.63.0",
     "@types/node": "^26.5.1",
+    "@vitest/coverage-v8": "^5.0.0",
     "eslint": "^10.10.0",
     "execa": "^9.6.1",
     "prettier": "^3.9.6",

@@ -9,6 +9,7 @@ import {
   PassthroughExit,
 } from '../output.js';
 import { outputFor } from '../program.js';
+import { registerBenchmarkCommand } from './benchmark.js';
 
 async function profile(
   options: { profile?: string },
@@ -29,6 +30,7 @@ export function registerModelCommands(
   dependencies: CliDependencies,
 ): void {
   const model = parent.command('model').description('manage the local model');
+  registerBenchmarkCommand(model, dependencies);
   model.command('logs').action(async () => {
     const result = await dependencies.model.logs();
     if (hasFailedExit(result)) {
