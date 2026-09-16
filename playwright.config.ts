@@ -18,7 +18,7 @@ export default defineConfig({
     {
       command: 'node --import tsx tests/e2e/server.ts',
       url: 'http://127.0.0.1:3001/api/health',
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: process.env.CHESS_LLAMA_E2E_REUSE_SERVERS === '1',
       timeout: 30_000,
     },
     {
@@ -26,7 +26,7 @@ export default defineConfig({
         'pnpm --filter @chess-llama/client dev -- --host 127.0.0.1 --port 5173',
       url: 'http://127.0.0.1:5173',
       env: { VITE_GATEWAY_URL: 'http://127.0.0.1:3001' },
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: process.env.CHESS_LLAMA_E2E_REUSE_SERVERS === '1',
       timeout: 30_000,
     },
   ],

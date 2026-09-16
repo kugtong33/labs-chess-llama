@@ -2,6 +2,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { writeFile } from 'node:fs/promises';
 
+import { assertAllowedProductionLicenses } from './license-policy.js';
+
 const execFileAsync = promisify(execFile);
 
 interface LicensePackage {
@@ -18,6 +20,7 @@ const { stdout } = await execFileAsync(
   { maxBuffer: 10 * 1024 * 1024 },
 );
 const inventory = parseInventory(stdout);
+assertAllowedProductionLicenses(Object.keys(inventory));
 const lines = [
   '# Third-Party Notices',
   '',

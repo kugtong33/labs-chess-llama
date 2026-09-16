@@ -37,6 +37,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Audit production dependencies
+        run: pnpm audit --prod --audit-level high
+
       - name: Check formatting
         run: pnpm format:check
 
@@ -58,7 +61,7 @@ jobs:
       - name: Run browser acceptance tests
         run: pnpm test:e2e
 
-      - name: Verify third-party notices
+      - name: Check license policy and third-party notices
         run: |
           pnpm notices
           git diff --exit-code THIRD_PARTY_NOTICES.md
@@ -73,3 +76,25 @@ jobs:
             test-results/
           if-no-files-found: ignore
           retention-days: 7
+
+  container-security:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Read pinned runtime image
+        id: runtime
+        run: |
+          node -e "const fs=require('node:fs'); console.log('image='+JSON.parse(fs.readFileSync('config/runtime-manifest.json','utf8')).image)" >> "$GITHUB_OUTPUT"
+
+      - name: Scan pinned llama.cpp image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.runtime.outputs.image }}
+          format: table
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL,HIGH

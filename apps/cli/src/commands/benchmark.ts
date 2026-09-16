@@ -1,5 +1,5 @@
 import { constants } from 'node:fs';
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { access, mkdir, writeFile } from 'node:fs/promises';
 import { cpus, totalmem } from 'node:os';
 import { join } from 'node:path';
 import { arch, platform, version as nodeVersion } from 'node:process';
@@ -19,11 +19,9 @@ import {
 import { outputFor } from '../program.js';
 import type { ChessLlamaPaths } from '../paths.js';
 import type { RuntimeManifest, RuntimeProfile } from '../runtime/types.js';
+import { sha256File } from '../runtime/download.js';
+import benchmarkFixtureData from '../../../../tests/fixtures/benchmarks/positions.json' with { type: 'json' };
 
-const FIXTURE_URL = new URL(
-  '../../../../tests/fixtures/benchmarks/positions.json',
-  import.meta.url,
-);
 const MAX_CANDIDATE_LOSS_CP = 150;
 const CANDIDATE_LIMIT = 5;
 const MOVE_TIME_MS = 100;
@@ -66,8 +64,20 @@ export interface BenchmarkSummary {
 
 export interface BenchmarkProfileReport {
   profileId: string;
+  artifact: BenchmarkProfileArtifact;
   positions: BenchmarkPositionResult[];
   summary: BenchmarkSummary;
+}
+
+export interface BenchmarkProfileArtifact {
+  id: string;
+  repository: string;
+  revision: string;
+  file: string;
+  sha256: string;
+  quantization: string;
+  contextSize: number;
+  experimental: boolean;
 }
 
 export interface BenchmarkReport {
@@ -85,7 +95,7 @@ export interface BenchmarkReport {
     cpuModel: string | null;
     logicalCpuCount: number;
     memoryBytes: number;
-    accelerator: 'reported-by-llama-server';
+    accelerator: 'not-probed-by-benchmark';
   };
   profiles: BenchmarkProfileReport[];
   qualified: boolean;
@@ -112,12 +122,21 @@ export interface BenchmarkDependencies {
   ): Promise<BenchmarkReport>;
 }
 
-interface InstalledBenchmarkOptions {
+export interface InstalledBenchmarkOptions {
   paths: Pick<ChessLlamaPaths, 'benchmarksDir' | 'modelDir'>;
   manifest: RuntimeManifest;
   profileIds: readonly string[];
   now?: () => Date;
   signal?: AbortSignal;
+  fixtures?: readonly BenchmarkFixture[];
+  prepareProfile?: (profileId: string, signal?: AbortSignal) => Promise<void>;
+  loadedModelId?: (signal?: AbortSignal) => Promise<string>;
+  runProfile?: (
+    profile: RuntimeProfile,
+    fixtures: readonly BenchmarkFixture[],
+    signal?: AbortSignal,
+  ) => Promise<BenchmarkProfileReport>;
+  hashFile?: (path: string, signal?: AbortSignal) => Promise<string>;
 }
 
 export function aggregateBenchmarkResults(
@@ -182,12 +201,36 @@ export async function runInstalledBenchmarks(
   options: InstalledBenchmarkOptions,
 ): Promise<BenchmarkReport> {
   const profiles = selectProfiles(options.manifest, options.profileIds);
-  const fixtures = await loadFixtures();
+  const fixtures = loadFixtures(options.fixtures ?? benchmarkFixtureData);
   const reports: BenchmarkProfileReport[] = [];
 
   for (const profile of profiles) {
-    await requireModelFile(options.paths.modelDir, profile);
-    reports.push(await runProfileBenchmark(profile, fixtures, options.signal));
+    await requireModelFile(
+      options.paths.modelDir,
+      profile,
+      options.hashFile ?? sha256File,
+      options.signal,
+    );
+    await options.prepareProfile?.(profile.id, options.signal);
+    const loadedModelId = await (options.loadedModelId ?? queryLoadedModelId)(
+      options.signal,
+    );
+    if (loadedModelId !== profile.file) {
+      throw new CliFailure(
+        `llama.cpp loaded ${loadedModelId}, expected ${profile.file}`,
+        exitCodes.health,
+      );
+    }
+    const result = await (options.runProfile ?? runProfileBenchmark)(
+      profile,
+      fixtures,
+      options.signal,
+    );
+    reports.push({
+      ...result,
+      profileId: profile.id,
+      artifact: artifactFor(profile),
+    });
   }
 
   const generatedAt = (options.now ?? (() => new Date()))().toISOString();
@@ -208,7 +251,7 @@ export async function runInstalledBenchmarks(
       cpuModel: cpus()[0]?.model ?? null,
       logicalCpuCount: cpus().length,
       memoryBytes: totalmem(),
-      accelerator: 'reported-by-llama-server',
+      accelerator: 'not-probed-by-benchmark',
     },
     profiles: reports,
     qualified,
@@ -295,6 +338,11 @@ async function runProfileBenchmark(
           modelProfileId: profile.id,
           signal,
         });
+        if (selection.modelId !== profile.file) {
+          throw new Error(
+            `llama.cpp response model changed to ${selection.modelId}; expected ${profile.file}`,
+          );
+        }
         positions.push({
           id: fixture.id,
           category: fixture.category,
@@ -323,6 +371,7 @@ async function runProfileBenchmark(
     }
     return {
       profileId: profile.id,
+      artifact: artifactFor(profile),
       positions,
       summary: aggregateBenchmarkResults(positions),
     };
@@ -331,8 +380,7 @@ async function runProfileBenchmark(
   }
 }
 
-async function loadFixtures(): Promise<BenchmarkFixture[]> {
-  const value: unknown = JSON.parse(await readFile(FIXTURE_URL, 'utf8'));
+function loadFixtures(value: unknown): BenchmarkFixture[] {
   if (!isFixtureArray(value)) {
     throw new CliFailure('Benchmark fixture is invalid', exitCodes.input);
   }
@@ -342,9 +390,12 @@ async function loadFixtures(): Promise<BenchmarkFixture[]> {
 async function requireModelFile(
   modelDir: string,
   profile: RuntimeProfile,
+  hashFile: (path: string, signal?: AbortSignal) => Promise<string>,
+  signal?: AbortSignal,
 ): Promise<void> {
+  const modelPath = join(modelDir, profile.file);
   try {
-    await access(join(modelDir, profile.file), constants.R_OK);
+    await access(modelPath, constants.R_OK);
   } catch (error) {
     throw new CliFailure(
       `Model weights are missing for profile ${profile.id}; run chess-llama model pull --profile ${profile.id}`,
@@ -352,6 +403,65 @@ async function requireModelFile(
       { cause: error },
     );
   }
+  if ((await hashFile(modelPath, signal)) !== profile.sha256) {
+    throw new CliFailure(
+      `Model checksum mismatch for profile ${profile.id}; run chess-llama model pull --profile ${profile.id}`,
+      exitCodes.prerequisite,
+    );
+  }
+}
+
+async function queryLoadedModelId(signal?: AbortSignal): Promise<string> {
+  const timeout = AbortSignal.timeout(5_000);
+  const requestSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
+  let response: Response;
+  try {
+    response = await globalThis.fetch('http://127.0.0.1:8080/v1/models', {
+      signal: requestSignal,
+    });
+  } catch (error) {
+    throw new CliFailure(
+      'Unable to query the loaded llama.cpp model',
+      exitCodes.health,
+      {
+        cause: error,
+      },
+    );
+  }
+  if (!response.ok) {
+    throw new CliFailure(
+      `llama.cpp model discovery returned HTTP ${response.status}`,
+      exitCodes.health,
+    );
+  }
+  const body: unknown = await response.json();
+  if (!isRecord(body) || !Array.isArray(body.data)) {
+    throw new CliFailure(
+      'llama.cpp returned invalid model discovery data',
+      exitCodes.health,
+    );
+  }
+  const first: unknown = body.data[0];
+  if (!isRecord(first) || typeof first.id !== 'string') {
+    throw new CliFailure(
+      'llama.cpp did not report a loaded model',
+      exitCodes.health,
+    );
+  }
+  return first.id;
+}
+
+function artifactFor(profile: RuntimeProfile): BenchmarkProfileArtifact {
+  return {
+    id: profile.id,
+    repository: profile.repository,
+    revision: profile.source.revision,
+    file: profile.file,
+    sha256: profile.sha256,
+    quantization: profile.quantization,
+    contextSize: profile.contextSize,
+    experimental: profile.experimental ?? false,
+  };
 }
 
 function selectProfiles(
@@ -411,6 +521,10 @@ function isFixture(value: unknown): value is BenchmarkFixture {
 
 function isFixtureArray(value: unknown): value is BenchmarkFixture[] {
   return Array.isArray(value) && value.every((item) => isFixture(item));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
 
 function messageFor(error: unknown): string {

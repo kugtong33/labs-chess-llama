@@ -273,6 +273,20 @@ describe('Fastify gateway API', () => {
     expect(response.headers['x-request-id']).toBeTruthy();
   });
 
+  it('allows browser settings updates through CORS preflight', async () => {
+    const response = await buildTestApp().app.inject({
+      method: 'OPTIONS',
+      url: '/api/settings',
+      headers: {
+        origin: 'http://127.0.0.1:5173',
+        'access-control-request-method': 'PUT',
+      },
+    });
+
+    expect(response.statusCode).toBe(204);
+    expect(response.headers['access-control-allow-methods']).toContain('PUT');
+  });
+
   it('reports model unavailability and preserves saved game extensions', async () => {
     const app = buildTestApp({ modelStatus: 'unavailable' }).app;
     const response = await app.inject({

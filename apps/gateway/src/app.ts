@@ -45,7 +45,10 @@ export function buildApp(dependencies: GatewayDependencies): FastifyInstance {
     cleanedUp = true;
     await dependencies.cleanup?.();
   });
-  void app.register(cors, { origin: dependencies.config.clientOrigin });
+  void app.register(cors, {
+    origin: dependencies.config.clientOrigin,
+    methods: ['GET', 'HEAD', 'POST', 'PUT'],
+  });
   app.addHook('onRequest', async (request, reply) => {
     reply.header('x-request-id', request.id);
   });

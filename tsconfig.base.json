@@ -3,6 +3,7 @@
     "target": "ES2024",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
+    "resolveJsonModule": true,
     "lib": ["ES2024"],
     "strict": true,
     "noUncheckedIndexedAccess": true,

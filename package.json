@@ -17,7 +17,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "notices": "tsx scripts/generate-third-party-notices.mts"
+    "notices": "node --import tsx scripts/generate-third-party-notices.mts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

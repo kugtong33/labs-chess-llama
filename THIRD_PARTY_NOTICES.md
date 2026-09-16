@@ -43,7 +43,7 @@ Chess Llama is distributed under GPL-3.0; the full license is in `LICENSE`. Stoc
 | Package | Version(s) | Project |
 | --- | --- | --- |
 | detect-libc | 2.1.2 | [link](https://github.com/lovell/detect-libc#readme) |
-| drizzle-orm | 0.44.7 | [link](https://orm.drizzle.team) |
+| drizzle-orm | 0.45.2 | [link](https://orm.drizzle.team) |
 | human-signals | 8.0.1 | [link](https://www.github.com/ehmicky/human-signals) |
 | tunnel-agent | 0.6.0 | [link](https://github.com/mikeal/tunnel-agent#readme) |
 

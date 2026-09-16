@@ -1,13 +1,18 @@
-import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { reconstructGame } from '@chess-llama/chess-domain';
 import { describe, expect, it } from 'vitest';
 
 import { CliFailure, exitCodes } from '../output.js';
 import { runCli, type CliDependencies } from '../program.js';
+import type { RuntimeManifest, RuntimeProfile } from '../runtime/types.js';
 import {
   aggregateBenchmarkResults,
   benchmarkHumanRows,
+  runInstalledBenchmarks,
   type BenchmarkPositionResult,
   type BenchmarkReport,
 } from './benchmark.js';
@@ -158,6 +163,16 @@ describe('model benchmark', () => {
     value.profiles = [
       {
         profileId: 'qwen3-4b-q4-k-m',
+        artifact: {
+          id: 'qwen3-4b-q4-k-m',
+          repository: 'Qwen/Qwen3-4B-GGUF',
+          revision: 'main',
+          file: 'Qwen3-4B-Q4_K_M.gguf',
+          sha256: 'a'.repeat(64),
+          quantization: 'Q4_K_M',
+          contextSize: 4096,
+          experimental: false,
+        },
         positions: [],
         summary: {
           totalPositions: 8,
@@ -185,6 +200,55 @@ describe('model benchmark', () => {
         reportFile: '/data/benchmarks/report.json',
       },
     ]);
+  });
+
+  it('rejects a different loaded model before attributing qualification', async () => {
+    const harness = await installedBenchmarkHarness();
+
+    await expect(
+      runInstalledBenchmarks({
+        ...harness.options,
+        fixtures: [],
+        loadedModelId: () => Promise.resolve('different-model.gguf'),
+        runProfile: () => Promise.resolve(profileReport(harness.profile)),
+      }),
+    ).rejects.toMatchObject({ code: exitCodes.health });
+  });
+
+  it('verifies and records the immutable profile artifact identity', async () => {
+    const harness = await installedBenchmarkHarness();
+    const report = await runInstalledBenchmarks({
+      ...harness.options,
+      fixtures: [],
+      loadedModelId: () => Promise.resolve(harness.profile.file),
+      runProfile: () => Promise.resolve(profileReport(harness.profile)),
+      now: () => new Date('2026-09-16T00:00:00.000Z'),
+    });
+
+    expect(report.profiles[0]?.artifact).toEqual({
+      id: harness.profile.id,
+      repository: harness.profile.repository,
+      revision: harness.profile.source.revision,
+      file: harness.profile.file,
+      sha256: harness.profile.sha256,
+      quantization: harness.profile.quantization,
+      contextSize: harness.profile.contextSize,
+      experimental: false,
+    });
+
+    const corruptManifest: RuntimeManifest = {
+      ...harness.options.manifest,
+      profiles: [{ ...harness.profile, sha256: '0'.repeat(64) }],
+    };
+    await expect(
+      runInstalledBenchmarks({
+        ...harness.options,
+        manifest: corruptManifest,
+        fixtures: [],
+        loadedModelId: () => Promise.resolve(harness.profile.file),
+        runProfile: () => Promise.resolve(profileReport(harness.profile)),
+      }),
+    ).rejects.toMatchObject({ code: exitCodes.prerequisite });
   });
 
   it('accepts repeated profiles and stable output/qualification exit codes', async () => {
@@ -252,11 +316,78 @@ function report(qualified: boolean): BenchmarkReport {
       cpuModel: 'test cpu',
       logicalCpuCount: 8,
       memoryBytes: 16_000_000_000,
-      accelerator: 'reported-by-llama-server',
+      accelerator: 'not-probed-by-benchmark',
     },
     profiles: [],
     qualified,
     status: qualified ? 'PASS' : 'FAIL',
+  };
+}
+
+async function installedBenchmarkHarness(): Promise<{
+  profile: RuntimeProfile;
+  options: {
+    paths: { modelDir: string; benchmarksDir: string };
+    manifest: RuntimeManifest;
+    profileIds: string[];
+  };
+}> {
+  const root = await mkdtemp(join(tmpdir(), 'chess-llama-benchmark-'));
+  const modelDir = join(root, 'models');
+  const file = 'test-model.gguf';
+  const bytes = 'verified test weights';
+  await mkdir(modelDir, { recursive: true });
+  await writeFile(join(modelDir, file), bytes, 'utf8');
+  const profile: RuntimeProfile = {
+    id: 'test-profile',
+    repository: 'test/repository',
+    file,
+    quantization: 'Q4_K_M',
+    contextSize: 4096,
+    url: 'https://example.test/model.gguf',
+    sha256: createHash('sha256').update(bytes).digest('hex'),
+    source: { repository: 'test/repository', revision: 'test-revision' },
+  };
+  return {
+    profile,
+    options: {
+      paths: { modelDir, benchmarksDir: join(root, 'benchmarks') },
+      manifest: {
+        schemaVersion: 1,
+        generatedAt: '2026-09-15T00:00:00.000Z',
+        image: `example@sha256:${'a'.repeat(64)}`,
+        source: { image: 'example:cuda' },
+        profiles: [profile],
+      },
+      profileIds: [profile.id],
+    },
+  };
+}
+
+function profileReport(profile: RuntimeProfile) {
+  return {
+    profileId: profile.id,
+    artifact: {
+      id: profile.id,
+      repository: profile.repository,
+      revision: profile.source.revision,
+      file: profile.file,
+      sha256: profile.sha256,
+      quantization: profile.quantization,
+      contextSize: profile.contextSize,
+      experimental: profile.experimental ?? false,
+    },
+    positions: [],
+    summary: {
+      totalPositions: 0,
+      candidateMembership: 0,
+      firstAttemptSuccess: 0,
+      successAfterRetry: 0,
+      medianLatencyMs: null,
+      commentarySamples: [],
+      qualified: false,
+      status: 'FAIL' as const,
+    },
   };
 }
 

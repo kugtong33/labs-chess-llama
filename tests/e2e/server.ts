@@ -28,6 +28,8 @@ const llamaPort = 18_080;
 const gatewayPort = 3_001;
 const temporaryRoot = await mkdtemp(join(tmpdir(), 'chess-llama-e2e-'));
 let failuresRemaining = 0;
+let delayNextCompletion = false;
+let cancelledResponses = 0;
 
 const llama = createServer((request, response) => {
   void handleLlamaRequest(request, response);
@@ -100,8 +102,11 @@ function createDeterministicAnalyzer(): StockfishAnalyzer {
   return {
     analyze(request: AnalysisRequest): Promise<RankedCandidate[]> {
       const ordered = [...request.legalMoves].sort((left, right) => {
-        if (left.uci === 'e7e5') return -1;
-        if (right.uci === 'e7e5') return 1;
+        const preferred = ['e7e5', 'd8h4'].find((uci) =>
+          request.legalMoves.some((move) => move.uci === uci),
+        );
+        if (left.uci === preferred) return -1;
+        if (right.uci === preferred) return 1;
         return left.uci.localeCompare(right.uci);
       });
       return Promise.resolve(
@@ -129,6 +134,13 @@ async function handleLlamaRequest(
     failuresRemaining = 2;
     return json(response, 200, { failuresRemaining });
   }
+  if (request.method === 'POST' && request.url === '/__control/delay-next') {
+    delayNextCompletion = true;
+    return json(response, 200, { delayNextCompletion });
+  }
+  if (request.method === 'GET' && request.url === '/__control/status') {
+    return json(response, 200, { cancelledResponses });
+  }
   if (request.method !== 'POST' || request.url !== '/v1/chat/completions') {
     return json(response, 404, { error: 'not found' });
   }
@@ -136,6 +148,11 @@ async function handleLlamaRequest(
   if (failuresRemaining > 0) {
     failuresRemaining -= 1;
     return json(response, 503, { error: 'deterministic failure' });
+  }
+  if (delayNextCompletion) {
+    delayNextCompletion = false;
+    await waitForCancelledResponse(response);
+    return;
   }
   const candidates = completionCandidates(body);
   const move = candidates[0];
@@ -154,6 +171,15 @@ async function handleLlamaRequest(
     ],
     usage: { prompt_tokens: 64, completion_tokens: 8 },
     timings: { predicted_per_second: 40 },
+  });
+}
+
+function waitForCancelledResponse(response: ServerResponse): Promise<void> {
+  return new Promise((resolve) => {
+    response.once('close', () => {
+      if (!response.writableEnded) cancelledResponses += 1;
+      resolve();
+    });
   });
 }
 

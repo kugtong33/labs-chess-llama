@@ -35,6 +35,23 @@ export interface ProcessRunner {
   ): Promise<DockerResult>;
 }
 
+export function createSystemProcessRunner(): ProcessRunner {
+  return {
+    async run(command, args, signal, environment) {
+      const result = await execa(command, args, {
+        reject: false,
+        cancelSignal: signal,
+        env: environment,
+      });
+      return {
+        exitCode: result.exitCode ?? 1,
+        stdout: String(result.stdout),
+        stderr: String(result.stderr),
+      };
+    },
+  };
+}
+
 export interface DoctorCheck {
   name: string;
   ok: boolean;
@@ -119,20 +136,7 @@ export async function createDefaultDependencies(
       manifest,
       paths: { modelDir: paths.modelDir, composeFile: paths.composeFile },
     });
-  const runner: ProcessRunner = adapters.runner ?? {
-    async run(command, args, signal, environment) {
-      const result = await execa(command, args, {
-        reject: false,
-        signal,
-        env: environment,
-      });
-      return {
-        exitCode: result.exitCode ?? 1,
-        stdout: String(result.stdout),
-        stderr: String(result.stderr),
-      };
-    },
-  };
+  const runner: ProcessRunner = adapters.runner ?? createSystemProcessRunner();
   const database: DatabaseDependencies = {
     async migrate() {
       await mkdir(dirname(paths.databaseFile), { recursive: true });
@@ -310,6 +314,9 @@ export async function createDefaultDependencies(
           manifest,
           profileIds,
           signal,
+          prepareProfile: async (profileId, profileSignal) => {
+            await model.start(profileId, profileSignal);
+          },
         }),
     },
     defaultProfile: DEFAULT_PROFILE,

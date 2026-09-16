@@ -33,7 +33,7 @@ Do not change the gateway host to `0.0.0.0`; the MVP is intentionally local-only
 | `model stop` | Stop and remove only the managed model container; preserve weights. |
 | `model status [--format json\|human]` | Report container, health, model/profile, and port state. |
 | `model logs` | Print llama.cpp container logs and preserve Compose's failing exit status. |
-| `model benchmark [--profile ID ...] [--format json\|human]` | Qualify one or more installed profiles and save a JSON report. |
+| `model benchmark [--profile ID ...] [--format json\|human]` | Verify, start, and identity-check each installed profile; qualify it; and save a JSON report. |
 | `db migrate` | Apply checked-in SQLite migrations. |
 | `db status [--format json\|human]` | Report current/expected versions and pending state. |
 | `db backup` | Create an online, timestamped SQLite backup and print its path. |

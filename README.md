@@ -18,7 +18,7 @@ The gateway owns chess rules, turn serialization, validation, and persistence. G
 - Node.js 24 and Corepack
 - Enough disk space for dependencies, the pinned container, and a GGUF model
 
-Verify that `nvidia-smi` works first. On WSL2, also verify `docker run --rm --gpus all nvidia/cuda:12.8.0-base-ubuntu24.04 nvidia-smi` before debugging the application.
+Verify that host `nvidia-smi` works first. Then use `chess-llama doctor`; its container GPU check uses the exact digest-pinned llama.cpp CUDA image and never substitutes or pulls an unrelated diagnostic image.
 
 ## Quick start
 
@@ -26,6 +26,7 @@ Verify that `nvidia-smi` works first. On WSL2, also verify `docker run --rm --gp
 corepack enable
 corepack prepare pnpm@11.5.1 --activate
 pnpm install --frozen-lockfile
+pnpm audit --prod --audit-level high
 pnpm build
 
 # Before the first pull, this usefully reports host issues and an expected
@@ -67,6 +68,8 @@ git diff --exit-code THIRD_PARTY_NOTICES.md
 ```
 
 Normal CI uses a deterministic fake llama.cpp HTTP server and temporary SQLite database. It requires no Docker, GPU, network model download, or model weights. Real RTX 4060 qualification is a separate, documented acceptance run.
+
+CI also rejects unreviewed production licenses and high-severity production dependency findings, then scans the digest-pinned llama.cpp image for high and critical OS/library vulnerabilities.
 
 See [docs/operations.md](docs/operations.md) for lifecycle, backup/restore, troubleshooting, paths, and teardown.
 

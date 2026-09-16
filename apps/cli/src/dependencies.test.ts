@@ -6,11 +6,23 @@ import { describe, expect, it } from 'vitest';
 
 import {
   createDefaultDependencies,
+  createSystemProcessRunner,
   type ModelDependencies,
   type ProcessRunner,
 } from './dependencies.js';
 
 describe('default CLI dependencies', () => {
+  it('runs a real child process with an AbortSignal', async () => {
+    const runner = createSystemProcessRunner();
+    const result = await runner.run(
+      '/usr/bin/printf',
+      ['ok'],
+      new AbortController().signal,
+    );
+
+    expect(result).toEqual({ exitCode: 0, stdout: 'ok', stderr: '' });
+  });
+
   it('launches the gateway with the resolved persistent database path', async () => {
     const root = await mkdtemp(join(tmpdir(), 'chess-llama-gateway-env-'));
     const databaseFile = join(root, 'data', 'chess-llama.sqlite');
