@@ -83,6 +83,34 @@ describe('Settings route', () => {
     ).toBeVisible();
   });
 
+  it('shows restart guidance for profile changes while runtime health is unknown', async () => {
+    const user = userEvent.setup();
+    const updateSettings = vi.fn((request) =>
+      Promise.resolve({ ...settings, ...request }),
+    );
+    render(
+      <App
+        gateway={fakeGateway({
+          health: () => new Promise(() => undefined),
+          updateSettings,
+        })}
+        initialEntries={['/settings']}
+      />,
+    );
+
+    await user.selectOptions(
+      await screen.findByLabelText('Model profile'),
+      'qwen3-1.7b-q4-k-m',
+    );
+    expect(
+      screen.getByText(/Restart the model to apply this profile/u),
+    ).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Save settings' }));
+    expect(
+      await screen.findByText(/Restart the model to apply this profile/u),
+    ).toBeVisible();
+  });
+
   it('applies only the persisted theme across non-settings routes', async () => {
     const user = userEvent.setup();
     const updateSettings = vi.fn((request) =>

@@ -224,6 +224,7 @@ export function PlayRoute() {
       />
       <div className="game-grid">
         <GameBoard
+          key={current.id}
           fen={current.currentFen}
           orientation={settings.data?.boardOrientation ?? current.humanColor}
           humanColor={current.humanColor}

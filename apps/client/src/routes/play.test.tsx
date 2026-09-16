@@ -189,6 +189,29 @@ describe('Play route', () => {
     expect(submitHumanMove).not.toHaveBeenCalled();
   });
 
+  it('discards a pending promotion when navigation changes game identity', async () => {
+    const user = userEvent.setup();
+    const nextGame = game({ id: '77777777-7777-4777-8777-777777777777' });
+    render(
+      <App
+        gateway={fakeGateway({ createGame: () => Promise.resolve(nextGame) })}
+        initialEntries={[`/games/${gameId}`]}
+      />,
+    );
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Promote pawn' }),
+    );
+    expect(screen.getByLabelText('Choose promotion')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'New Game' }));
+
+    await waitFor(() =>
+      expect(
+        screen.queryByLabelText('Choose promotion'),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
   it('disables play while the model loads and after checkmate', async () => {
     const loading = {
       ...readyHealth,

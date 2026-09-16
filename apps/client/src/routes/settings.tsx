@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 import type { Settings } from '@chess-llama/contracts';
 
 import {
@@ -47,6 +47,7 @@ function SettingsForm({
 }) {
   const [form, setForm] = useState(initial);
   const [saved, setSaved] = useState(false);
+  const initialProfileId = useRef(initial.modelProfileId);
   const gateway = useGateway();
   const queryClient = useQueryClient();
   const abortable = useAbortScope();
@@ -70,9 +71,7 @@ function SettingsForm({
     update.mutate(form);
   };
   const profileChanged =
-    loadedProfileId !== undefined &&
-    loadedProfileId !== null &&
-    form.modelProfileId !== loadedProfileId;
+    form.modelProfileId !== (loadedProfileId ?? initialProfileId.current);
 
   return (
     <section className="settings-page" aria-labelledby="settings-title">
