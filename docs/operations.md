@@ -1,10 +1,10 @@
 # Chess Llama Operations
 
-Run commands as `pnpm chess-llama ...` from a source checkout. A linked or packaged installation uses the equivalent `chess-llama ...` executable.
+Run commands as `./chess-llama ...` from a source checkout. `pnpm chess-llama -- ...` is an equivalent compatibility wrapper. An optional user-managed symlink may place `chess-llama` on `PATH`; the project never installs one automatically.
 
 ## Service lifecycle
 
-`pnpm chess-llama dev` checks prerequisites, migrates SQLite, starts the selected llama.cpp profile if needed, then starts the gateway and browser client. It supervises and stops only resources it started. Ctrl-C or SIGTERM performs an orderly shutdown; model weights and persisted data remain.
+`./chess-llama dev` checks prerequisites, migrates SQLite, starts the selected llama.cpp profile if needed, then starts the gateway and browser client. It supervises and stops only resources it started. Ctrl-C or SIGTERM performs an orderly shutdown; model weights and persisted data remain.
 
 Default loopback services are:
 
@@ -21,7 +21,7 @@ Do not change the gateway host to `0.0.0.0`; the MVP is intentionally local-only
 | Command | Behavior |
 | --- | --- |
 | `dev` | Start and supervise the complete development stack. |
-| `doctor [--format json\|human]` | Check Node/pnpm, Docker/Compose, cached CUDA image GPU access, paths, ports, migration state, installed-model checksum, and service health. |
+| `doctor [--format json\|human]` | Check Node/pnpm, Docker/Compose, util-linux (`setsid` and `script`), cached CUDA image GPU access, paths, ports, migration state, installed-model checksum, and service health. |
 | `client dev` | Start only the loopback Vite development server. |
 | `client build` | Build the production browser bundle. |
 | `client serve` | Preview the built browser bundle on loopback. |
@@ -32,7 +32,7 @@ Do not change the gateway host to `0.0.0.0`; the MVP is intentionally local-only
 | `model start [--profile ID]` | Verify weights, recreate the model container, wait for health, and verify the loaded filename. |
 | `model stop` | Stop and remove only the managed model container; preserve weights. |
 | `model status [--format json\|human]` | Report container, health, model/profile, and port state. |
-| `model logs` | Print llama.cpp container logs and preserve Compose's failing exit status. |
+| `model logs` | Report llama.cpp container logs in the established JSON result envelope and preserve Compose's failing exit status. |
 | `model benchmark [--profile ID ...] [--format json\|human]` | Verify, start, and identity-check each installed profile; qualify it; and save a JSON report. |
 | `db migrate` | Apply checked-in SQLite migrations. |
 | `db status [--format json\|human]` | Report current/expected versions and pending state. |
@@ -58,16 +58,16 @@ Overrides must be absolute paths; a relative override is ignored in favor of the
 Create a consistent online backup while the app is running:
 
 ```bash
-pnpm chess-llama db backup
+./chess-llama db backup
 ```
 
 The command prints the exact destination. To restore:
 
 1. Stop `dev` and ensure no standalone gateway process is running.
-2. Preserve the current database with `pnpm chess-llama db backup` before shutdown, or copy it to a uniquely named recovery file.
+2. Preserve the current database with `./chess-llama db backup` before shutdown, or copy it to a uniquely named recovery file.
 3. Resolve the active database path and chosen backup path exactly; do not restore using a wildcard.
 4. Copy the chosen backup over the database file, retaining owner permissions.
-5. Run `pnpm chess-llama db migrate`, then `pnpm chess-llama db status`.
+5. Run `./chess-llama db migrate`, then `./chess-llama db status`.
 6. Start the stack and open the history screen to verify the expected games.
 
 SQLite `-wal` and `-shm` sidecars must not be copied from a live database. The online backup command is the supported way to capture live state.
@@ -77,11 +77,11 @@ SQLite `-wal` and `-shm` sidecars must not be copied from a live database. The o
 Changing the preferred profile requires a restart because the llama.cpp container loads one GGUF at startup:
 
 ```bash
-pnpm chess-llama model pull --profile qwen3-1.7b-q4-k-m
-pnpm chess-llama model stop
-pnpm chess-llama model start --profile qwen3-1.7b-q4-k-m
-pnpm chess-llama model status --format human
-pnpm chess-llama model benchmark --profile qwen3-1.7b-q4-k-m
+./chess-llama model pull --profile qwen3-1.7b-q4-k-m
+./chess-llama model stop
+./chess-llama model start --profile qwen3-1.7b-q4-k-m
+./chess-llama model status --format human
+./chess-llama model benchmark --profile qwen3-1.7b-q4-k-m
 ```
 
 The 1.7B profile remains experimental even if it starts successfully; promote it only after [model qualification](model-benchmark.md).
@@ -102,7 +102,7 @@ The 1.7B profile remains experimental even if it starts successfully; promote it
 First stop managed processes and the container:
 
 ```bash
-pnpm chess-llama model stop
+./chess-llama model stop
 ```
 
 Stop any foreground client/gateway with Ctrl-C. For a recoverable teardown, rename the exact `chess-llama` data and config directories after verifying their resolved paths. This removes games, settings, backups, reports, and operational configuration from active use. Leave `${XDG_CACHE_HOME:-~/.cache}/chess-llama/models/` untouched—the default teardown preserves downloaded weights. Delete that model directory only when you intentionally want to reclaim the model storage and are willing to download it again.

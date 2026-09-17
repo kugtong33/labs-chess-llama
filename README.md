@@ -16,6 +16,7 @@ The gateway owns chess rules, turn serialization, validation, and persistence. G
 - NVIDIA RTX 4060-class GPU with a working driver
 - Docker Engine with Compose and NVIDIA Container Toolkit support; on WSL2, Docker Desktop with WSL integration is supported
 - Node.js 24 and Corepack
+- util-linux (`flock`, `setsid`, and `script`), curl, sha256sum, and `ss`
 - Enough disk space for dependencies, the pinned container, and a GGUF model
 
 Verify that host `nvidia-smi` works first. Then use `chess-llama doctor`; its container GPU check uses the exact digest-pinned llama.cpp CUDA image and never substitutes or pulls an unrelated diagnostic image.
@@ -31,16 +32,16 @@ pnpm build
 
 # Before the first pull, this usefully reports host issues and an expected
 # model-installed failure.
-pnpm chess-llama doctor --format human
+./chess-llama doctor --format human
 
-pnpm chess-llama model pull --profile qwen3-4b-q4-k-m
-pnpm chess-llama doctor --format human
-pnpm chess-llama dev
+./chess-llama model pull --profile qwen3-4b-q4-k-m
+./chess-llama doctor --format human
+./chess-llama dev
 ```
 
 Open <http://127.0.0.1:5173>. Press Ctrl-C once to stop the client, gateway, and any model container started by that `dev` invocation. The downloaded weights are retained.
 
-`pnpm chess-llama ...` runs the single namespaced CLI directly from the workspace. After packaging or linking `apps/cli`, its executable name is `chess-llama`, with the same commands—for example `chess-llama client dev`, `chess-llama gateway start`, and `chess-llama model status`.
+`./chess-llama ...` is the public Bash control plane and works from any current directory when invoked by absolute path or a user-managed symlink. `pnpm chess-llama -- ...` remains a compatibility wrapper. Examples include `./chess-llama client dev`, `./chess-llama gateway start`, and `./chess-llama model status`.
 
 ## Model profiles
 
@@ -57,7 +58,9 @@ Network access is needed for the first dependency install, container pull, and m
 
 ```bash
 pnpm format:check
+pnpm format:shell:check
 pnpm lint
+pnpm lint:shell
 pnpm typecheck
 pnpm test:coverage
 pnpm build

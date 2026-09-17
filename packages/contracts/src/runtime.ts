@@ -13,10 +13,7 @@ export const runtimeProfileSchema = z
     url: z.url(),
     sha256: sha256Schema,
     source: z
-      .object({
-        repository: z.string().min(1),
-        revision: z.string().min(1),
-      })
+      .object({ repository: z.string().min(1), revision: z.string().min(1) })
       .strict(),
   })
   .strict();
@@ -35,19 +32,3 @@ export const runtimeManifestSchema = z
 
 export type RuntimeProfile = z.infer<typeof runtimeProfileSchema>;
 export type RuntimeManifest = z.infer<typeof runtimeManifestSchema>;
-
-export interface DockerResult {
-  exitCode: number;
-  stdout: string;
-  stderr: string;
-}
-
-export interface DockerAdapter {
-  compose(
-    args: readonly string[],
-    env: Readonly<Record<string, string>>,
-    signal?: AbortSignal,
-  ): Promise<DockerResult>;
-}
-
-export type HealthFetcher = typeof fetch;

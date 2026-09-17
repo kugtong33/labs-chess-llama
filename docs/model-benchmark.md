@@ -7,7 +7,7 @@ The benchmark answers a narrow question: can an installed quantized model reliab
 Install the selected model, then run:
 
 ```bash
-pnpm chess-llama model benchmark --profile qwen3-4b-q4-k-m --format human
+./chess-llama model benchmark --profile qwen3-4b-q4-k-m --format human
 ```
 
 Repeat `--profile` to qualify multiple installed profiles in one run. Before each profile, the command verifies the installed GGUF checksum, starts or recreates the managed llama.cpp container for that profile, and confirms `/v1/models` reports the exact expected filename. JSON format is available for tooling. A timestamped report is written to `${XDG_DATA_HOME:-~/.local/share}/chess-llama/benchmarks/` (or `CHESS_LLAMA_BENCHMARKS_DIR`). Missing or corrupt weights exit `3`, a loaded-model mismatch exits `5`, and a completed but failed qualification exits `1`.

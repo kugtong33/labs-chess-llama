@@ -44,7 +44,6 @@ Chess Llama is distributed under GPL-3.0; the full license is in `LICENSE`. Stoc
 | --- | --- | --- |
 | detect-libc | 2.1.2 | [link](https://github.com/lovell/detect-libc#readme) |
 | drizzle-orm | 0.45.2 | [link](https://orm.drizzle.team) |
-| human-signals | 8.0.1 | [link](https://www.github.com/ehmicky/human-signals) |
 | tunnel-agent | 0.6.0 | [link](https://github.com/mikeal/tunnel-agent#readme) |
 
 ### BSD-2-Clause
@@ -76,12 +75,9 @@ Chess Llama is distributed under GPL-3.0; the full license is in `LICENSE`. Stoc
 | fastq | 1.20.3 | [link](https://github.com/mcollina/fastq#readme) |
 | inherits | 2.0.4 | [link](https://github.com/isaacs/inherits#readme) |
 | ini | 1.3.8 | [link](https://github.com/isaacs/ini#readme) |
-| isexe | 2.0.0 | [link](https://github.com/isaacs/isexe#readme) |
 | once | 1.4.0 | [link](https://github.com/isaacs/once#readme) |
 | semver | 7.8.5 | [link](https://github.com/npm/node-semver#readme) |
-| signal-exit | 4.1.0 | [link](https://github.com/tapjs/signal-exit#readme) |
 | split2 | 4.2.0 | [link](https://github.com/mcollina/split2#readme) |
-| which | 2.0.2 | [link](https://github.com/isaacs/node-which#readme) |
 | wrappy | 1.0.2 | [link](https://github.com/npm/wrappy) |
 | yaml | 2.9.1 | [link](https://eemeli.org/yaml/) |
 
@@ -102,8 +98,6 @@ Chess Llama is distributed under GPL-3.0; the full license is in `LICENSE`. Stoc
 | @fastify/proxy-addr | 5.1.0 | [link](https://github.com/fastify/proxy-addr#readme) |
 | @fastify/swagger | 9.8.1 | [link](https://github.com/fastify/fastify-swagger#readme) |
 | @pinojs/redact | 0.4.0 | [link](https://github.com/pinojs/redact#readme) |
-| @sec-ant/readable-stream | 0.4.1 | [link](https://github.com/Sec-ant/readable-stream) |
-| @sindresorhus/merge-streams | 4.0.0 | [link](https://github.com/sindresorhus/merge-streams#readme) |
 | @tanstack/query-core | 5.102.8 | [link](https://tanstack.com/query) |
 | @tanstack/react-query | 5.102.8 | [link](https://tanstack.com/query) |
 | @types/better-sqlite3 | 7.6.13 | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/better-sqlite3) |
@@ -118,15 +112,12 @@ Chess Llama is distributed under GPL-3.0; the full license is in `LICENSE`. Stoc
 | bindings | 1.5.0 | [link](https://github.com/TooTallNate/node-bindings) |
 | bl | 4.1.0 | [link](https://github.com/rvagg/bl) |
 | buffer | 5.7.1 | [link](https://github.com/feross/buffer) |
-| commander | 14.0.3 | [link](https://github.com/tj/commander.js#readme) |
 | cookie | 1.1.1 | [link](https://github.com/jshttp/cookie#readme) |
-| cross-spawn | 7.0.6 | [link](https://github.com/moxystudio/node-cross-spawn) |
 | debug | 4.4.3 | [link](https://github.com/debug-js/debug#readme) |
 | decompress-response | 6.0.0 | [link](https://github.com/sindresorhus/decompress-response#readme) |
 | deep-extend | 0.6.0 | [link](https://github.com/unclechu/node-deep-extend) |
 | dequal | 2.0.3 | [link](https://github.com/lukeed/dequal#readme) |
 | end-of-stream | 1.4.5 | [link](https://github.com/mafintosh/end-of-stream) |
-| execa | 9.6.1 | [link](https://github.com/sindresorhus/execa#readme) |
 | fast-decode-uri-component | 1.0.1 | [link](https://github.com/delvedor/fast-decode-uri-component#readme) |
 | fast-deep-equal | 3.1.3 | [link](https://github.com/epoberezkin/fast-deep-equal#readme) |
 | fast-json-stringify | 7.0.1 | [link](https://github.com/fastify/fast-json-stringify#readme) |
@@ -134,16 +125,11 @@ Chess Llama is distributed under GPL-3.0; the full license is in `LICENSE`. Stoc
 | fastify | 5.12.4 | [link](https://fastify.dev/) |
 | fastify-plugin | 6.0.0 | [link](https://github.com/fastify/fastify-plugin#readme) |
 | fastify-type-provider-zod | 6.1.0 | [link](https://github.com/turkerdev/fastify-type-provider-zod) |
-| figures | 6.1.0 | [link](https://github.com/sindresorhus/figures#readme) |
 | file-uri-to-path | 1.0.0 | [link](https://github.com/TooTallNate/file-uri-to-path) |
 | find-my-way | 9.9.0 | [link](https://github.com/delvedor/find-my-way#readme) |
 | fs-constants | 1.0.0 | [link](https://github.com/mafintosh/fs-constants) |
-| get-stream | 9.0.1 | [link](https://github.com/sindresorhus/get-stream#readme) |
 | github-from-package | 0.0.0 | [link](https://github.com/substack/github-from-package) |
 | ipaddr.js | 2.5.0 | [link](https://github.com/whitequark/ipaddr.js#readme) |
-| is-plain-obj | 4.1.0 | [link](https://github.com/sindresorhus/is-plain-obj#readme) |
-| is-stream | 4.0.1 | [link](https://github.com/sindresorhus/is-stream#readme) |
-| is-unicode-supported | 2.1.0 | [link](https://github.com/sindresorhus/is-unicode-supported#readme) |
 | json-schema-ref-resolver | 3.0.0 | [link](https://github.com/fastify/json-schema-ref-resolver#readme) |
 | json-schema-resolver | 3.0.0 | [link](https://github.com/Eomm/json-schema-resolver#readme) |
 | json-schema-traverse | 1.0.0 | [link](https://github.com/epoberezkin/json-schema-traverse#readme) |
@@ -153,16 +139,12 @@ Chess Llama is distributed under GPL-3.0; the full license is in `LICENSE`. Stoc
 | ms | 2.1.3 | [link](https://github.com/vercel/ms#readme) |
 | napi-build-utils | 2.0.0 | [link](https://github.com/inspiredware/napi-build-utils#readme) |
 | node-abi | 3.96.0 | [link](https://github.com/electron/node-abi#readme) |
-| npm-run-path | 6.0.0 | [link](https://github.com/sindresorhus/npm-run-path#readme) |
 | on-exit-leak-free | 2.1.2 | [link](https://github.com/mcollina/on-exit-or-gc#readme) |
 | openapi-types | 12.1.3 | [link](https://github.com/kogosoftwarellc/open-api/tree/master/packages/openapi-types#readme) |
-| parse-ms | 4.0.0 | [link](https://github.com/sindresorhus/parse-ms#readme) |
-| path-key | 3.1.1, 4.0.0 | [link](https://github.com/sindresorhus/path-key#readme) |
 | pino | 10.3.1 | [link](https://getpino.io) |
 | pino-abstract-transport | 3.0.0 | [link](https://github.com/pinojs/pino-abstract-transport#readme) |
 | pino-std-serializers | 7.1.0 | [link](https://github.com/pinojs/pino-std-serializers#readme) |
 | prebuild-install | 7.1.3 | [link](https://github.com/prebuild/prebuild-install) |
-| pretty-ms | 9.3.1 | [link](https://github.com/sindresorhus/pretty-ms#readme) |
 | process-warning | 4.0.1, 5.1.0 | [link](https://github.com/fastify/fastify-warning#readme) |
 | pump | 3.0.4 | [link](https://github.com/mafintosh/pump#readme) |
 | quick-format-unescaped | 4.0.4 | [link](https://github.com/davidmarkclements/quick-format#readme) |
@@ -182,21 +164,16 @@ Chess Llama is distributed under GPL-3.0; the full license is in `LICENSE`. Stoc
 | safe-stable-stringify | 2.5.0 | [link](https://github.com/BridgeAR/safe-stable-stringify#readme) |
 | scheduler | 0.28.0 | [link](https://react.dev/) |
 | set-cookie-parser | 2.7.2 | [link](https://github.com/nfriedly/set-cookie-parser) |
-| shebang-command | 2.0.0 | [link](https://github.com/kevva/shebang-command#readme) |
-| shebang-regex | 3.0.0 | [link](https://github.com/sindresorhus/shebang-regex#readme) |
 | simple-concat | 1.0.1 | [link](https://github.com/feross/simple-concat) |
 | simple-get | 4.0.1 | [link](https://github.com/feross/simple-get) |
 | sonic-boom | 4.2.1 | [link](https://github.com/pinojs/sonic-boom#readme) |
 | string_decoder | 1.3.0 | [link](https://github.com/nodejs/string_decoder) |
-| strip-final-newline | 4.0.0 | [link](https://github.com/sindresorhus/strip-final-newline#readme) |
 | strip-json-comments | 2.0.1 | [link](https://github.com/sindresorhus/strip-json-comments#readme) |
 | tar-fs | 2.1.5 | [link](https://github.com/mafintosh/tar-fs) |
 | tar-stream | 2.2.0 | [link](https://github.com/mafintosh/tar-stream) |
 | thread-stream | 4.2.0 | [link](https://github.com/mcollina/thread-stream#readme) |
 | toad-cache | 3.7.4 | [link](https://github.com/kibertoad/toad-cache) |
 | undici-types | 8.9.0 | [link](https://undici.nodejs.org) |
-| unicorn-magic | 0.3.0 | [link](https://github.com/sindresorhus/unicorn-magic#readme) |
 | util-deprecate | 1.0.2 | [link](https://github.com/TooTallNate/util-deprecate) |
-| yoctocolors | 2.2.0 | [link](https://github.com/sindresorhus/yoctocolors#readme) |
 | zod | 4.6.5 | [link](https://zod.dev) |
 

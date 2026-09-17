@@ -47,7 +47,7 @@ export class StockfishJsAnalyzer implements StockfishAnalyzer {
     await this.queue;
     if (this.child !== null) {
       void this.send('quit');
-      this.child.kill();
+      this.terminateProcess(this.child);
       this.child = null;
       this.stdinReady = Promise.resolve();
     }
@@ -59,8 +59,26 @@ export class StockfishJsAnalyzer implements StockfishAnalyzer {
     if (this.child !== null) return;
     if (this.closed) throw new Error('Stockfish analyzer is closed');
 
-    const child = spawn(process.execPath, [ENGINE_PATH], {
-      stdio: ['pipe', 'pipe', 'pipe'],
+    // Stockfish.js treats the non-blocking socket that Node uses for a child
+    // stdin pipe as EOF during WASM startup. util-linux `script` provides a
+    // pseudo-terminal while preserving the UCI stream and exit status.
+    const child = spawn(
+      'script',
+      ['-qefc', 'exec "$STOCKFISH_NODE" "$STOCKFISH_ENGINE"', '/dev/null'],
+      {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        detached: true,
+        env: {
+          ...process.env,
+          STOCKFISH_NODE: process.execPath,
+          STOCKFISH_ENGINE: ENGINE_PATH,
+        },
+      },
+    );
+    let stderr = '';
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (chunk: string) => {
+      stderr += chunk;
     });
     this.child = child;
     this.lines = createInterface({ input: child.stdout });
@@ -76,7 +94,9 @@ export class StockfishJsAnalyzer implements StockfishAnalyzer {
       if (!this.closed && this.child === child) {
         this.markDead(
           child,
-          new Error(`Stockfish exited (${code ?? `signal ${signal}`})`),
+          new Error(
+            `Stockfish exited (${code ?? `signal ${signal}`})${stderr.trim() ? `: ${stderr.trim()}` : ''}`,
+          ),
         );
       }
     });
@@ -310,9 +330,18 @@ export class StockfishJsAnalyzer implements StockfishAnalyzer {
     if (error !== undefined) this.emitError(error);
     this.lines?.close();
     this.lines = null;
-    this.child?.kill();
+    if (this.child !== null) this.terminateProcess(this.child);
     this.child = null;
     this.stdinReady = Promise.resolve();
+  }
+
+  private terminateProcess(child: ChildProcessWithoutNullStreams): void {
+    try {
+      if (child.pid === undefined) child.kill();
+      else process.kill(-child.pid, 'SIGTERM');
+    } catch {
+      child.kill();
+    }
   }
 }
 

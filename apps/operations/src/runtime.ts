@@ -1,0 +1,82 @@
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+
+import {
+  runtimeManifestSchema,
+  type RuntimeManifest,
+  type RuntimeProfile,
+} from '@chess-llama/contracts';
+
+export async function loadRuntimeManifest(
+  path: string,
+): Promise<RuntimeManifest> {
+  return runtimeManifestSchema.parse(JSON.parse(await readFile(path, 'utf8')));
+}
+
+export function findRuntimeProfile(
+  manifest: RuntimeManifest,
+  profileId: string,
+): RuntimeProfile {
+  const profile = manifest.profiles.find((item) => item.id === profileId);
+  if (!profile) throw new Error(`Unknown model profile: ${profileId}`);
+  return profile;
+}
+
+export function findRuntimeProfileByFile(
+  manifest: RuntimeManifest,
+  file: string,
+): RuntimeProfile | undefined {
+  return manifest.profiles.find((profile) => profile.file === file);
+}
+
+async function main(): Promise<void> {
+  const manifestPath = process.env.CHESS_LLAMA_RUNTIME_MANIFEST;
+  if (!manifestPath)
+    throw new Error('CHESS_LLAMA_RUNTIME_MANIFEST is required');
+  const manifest = await loadRuntimeManifest(manifestPath);
+  const operation = process.argv[2];
+  if (operation === 'manifest') {
+    process.stdout.write(`${JSON.stringify(manifest)}\n`);
+    return;
+  }
+  if (operation === 'default-profile') {
+    process.stdout.write(`${manifest.profiles[0]?.id ?? ''}\n`);
+    return;
+  }
+  if (operation === 'image') {
+    process.stdout.write(`${manifest.image}\n`);
+    return;
+  }
+  if (operation === 'profile') {
+    const profile = findRuntimeProfile(manifest, process.argv[3] ?? '');
+    process.stdout.write(`${JSON.stringify(profile)}\n`);
+    return;
+  }
+  if (operation === 'profile-id-for-file') {
+    process.stdout.write(
+      `${findRuntimeProfileByFile(manifest, process.argv[3] ?? '')?.id ?? ''}\n`,
+    );
+    return;
+  }
+  if (operation === 'profile-field') {
+    const profile = findRuntimeProfile(manifest, process.argv[3] ?? '');
+    const field = process.argv[4];
+    if (!field || !['file', 'id', 'sha256', 'url'].includes(field)) {
+      throw new Error(`Unknown profile field: ${field ?? ''}`);
+    }
+    process.stdout.write(
+      `${String(profile[field as 'file' | 'id' | 'sha256' | 'url'])}\n`,
+    );
+    return;
+  }
+  throw new Error(`Unknown runtime operation: ${operation ?? ''}`);
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch((error: unknown) => {
+    process.stderr.write(
+      `${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    process.exitCode = 1;
+  });
+}

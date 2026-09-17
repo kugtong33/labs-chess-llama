@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+
+readonly CHESS_LLAMA_EXIT_UNEXPECTED=1
+readonly CHESS_LLAMA_EXIT_INPUT=2
+readonly CHESS_LLAMA_EXIT_PREREQUISITE=3
+readonly CHESS_LLAMA_EXIT_RUNTIME=4
+readonly CHESS_LLAMA_EXIT_HEALTH=5
+readonly CHESS_LLAMA_EXIT_STORAGE=6
+
+# shellcheck source=scripts/cli/paths.sh
+source "$CHESS_LLAMA_PROJECT_ROOT/scripts/cli/paths.sh"
+# shellcheck source=scripts/cli/output.sh
+source "$CHESS_LLAMA_PROJECT_ROOT/scripts/cli/output.sh"
+# shellcheck source=scripts/cli/client.sh
+source "$CHESS_LLAMA_PROJECT_ROOT/scripts/cli/client.sh"
+# shellcheck source=scripts/cli/database.sh
+source "$CHESS_LLAMA_PROJECT_ROOT/scripts/cli/database.sh"
+# shellcheck source=scripts/cli/gateway.sh
+source "$CHESS_LLAMA_PROJECT_ROOT/scripts/cli/gateway.sh"
+# shellcheck source=scripts/cli/model.sh
+source "$CHESS_LLAMA_PROJECT_ROOT/scripts/cli/model.sh"
+# shellcheck source=scripts/cli/doctor.sh
+source "$CHESS_LLAMA_PROJECT_ROOT/scripts/cli/doctor.sh"
+# shellcheck source=scripts/cli/dev.sh
+source "$CHESS_LLAMA_PROJECT_ROOT/scripts/cli/dev.sh"
+
+chess_llama_help() {
+  cat <<'EOF'
+Usage: chess-llama [options] [command]
+
+local hybrid chess gateway and runtime
+
+Commands:
+  client             manage the browser client
+  db                 manage the SQLite database
+  dev                start the local development stack
+  doctor             check local prerequisites
+  gateway            manage the gateway
+  model              manage the local model
+  help [command]     display help for command
+
+Options:
+  -h, --help         display help for command
+EOF
+}
+
+chess_llama_input_error() {
+  printf '%s\n' "$1" >&2
+  return "$CHESS_LLAMA_EXIT_INPUT"
+}
+
+chess_llama_main() {
+  local command=${1:-}
+  case "$command" in
+    '' | -h | --help)
+      chess_llama_help
+      ;;
+    help)
+      shift
+      if (($# == 0)); then
+        chess_llama_help
+      else
+        local namespace=$1
+        chess_llama_main "$namespace" --help
+      fi
+      ;;
+    client)
+      shift
+      chess_llama_client_main "$@"
+      ;;
+    gateway)
+      shift
+      chess_llama_gateway_main "$@"
+      ;;
+    db)
+      shift
+      chess_llama_database_main "$@"
+      ;;
+    model)
+      shift
+      chess_llama_model_main "$@"
+      ;;
+    doctor)
+      shift
+      chess_llama_doctor_main "$@"
+      ;;
+    dev)
+      shift
+      chess_llama_dev_main "$@"
+      ;;
+    *)
+      chess_llama_input_error "Unknown command: $command"
+      ;;
+  esac
+}

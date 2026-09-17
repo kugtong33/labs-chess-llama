@@ -1,0 +1,23 @@
+{
+  "name": "@chess-llama/operations",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/benchmark.ts src/database.ts src/runtime.ts --format esm",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@chess-llama/chess-domain": "workspace:*",
+    "@chess-llama/contracts": "workspace:*",
+    "@chess-llama/llama-protocol": "workspace:*",
+    "@chess-llama/stockfish-adapter": "workspace:*",
+    "@chess-llama/storage": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.5.1"
+  }
+}

@@ -43,14 +43,23 @@ jobs:
       - name: Check formatting
         run: pnpm format:check
 
+      - name: Check Bash formatting
+        run: pnpm format:shell:check
+
       - name: Lint
         run: pnpm lint
+
+      - name: Lint Bash
+        run: pnpm lint:shell
 
       - name: Type-check
         run: pnpm typecheck
 
       - name: Run tests with coverage
         run: pnpm test:coverage
+
+      - name: Run Bash behavior tests
+        run: pnpm test:shell
 
       - name: Build production bundles
         run: pnpm build

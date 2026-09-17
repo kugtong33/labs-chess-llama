@@ -8,7 +8,7 @@ import { z } from 'zod';
 import {
   runtimeManifestSchema,
   type RuntimeManifest,
-} from '../apps/cli/src/runtime/types.js';
+} from '../packages/contracts/src/runtime.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const sourcePath = resolve(root, 'config/runtime-source.json');

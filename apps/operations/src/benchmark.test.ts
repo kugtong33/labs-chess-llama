@@ -6,12 +6,11 @@ import { join } from 'node:path';
 import { reconstructGame } from '@chess-llama/chess-domain';
 import { describe, expect, it } from 'vitest';
 
-import { CliFailure, exitCodes } from '../output.js';
-import { runCli, type CliDependencies } from '../program.js';
-import type { RuntimeManifest, RuntimeProfile } from '../runtime/types.js';
+import type { RuntimeManifest, RuntimeProfile } from '@chess-llama/contracts';
 import {
   aggregateBenchmarkResults,
   benchmarkHumanRows,
+  exitCodes,
   runInstalledBenchmarks,
   type BenchmarkPositionResult,
   type BenchmarkReport,
@@ -28,7 +27,7 @@ describe('model benchmark', () => {
     const positions = JSON.parse(
       await readFile(
         new URL(
-          '../../../../tests/fixtures/benchmarks/positions.json',
+          '../../../tests/fixtures/benchmarks/positions.json',
           import.meta.url,
         ),
         'utf8',
@@ -250,54 +249,6 @@ describe('model benchmark', () => {
       }),
     ).rejects.toMatchObject({ code: exitCodes.prerequisite });
   });
-
-  it('accepts repeated profiles and stable output/qualification exit codes', async () => {
-    const calls: string[][] = [];
-    const writes: Array<{ value: unknown; format?: 'json' | 'human' }> = [];
-    const dependencies = cliDependencies(
-      {
-        run: (profiles) => {
-          calls.push([...profiles]);
-          return Promise.resolve(report(true));
-        },
-      },
-      writes,
-    );
-
-    await expect(
-      runCli(
-        [
-          'model',
-          'benchmark',
-          '--profile',
-          'qwen3-4b-q4-k-m',
-          '--profile',
-          'qwen3-1.7b-q4-k-m',
-          '--format',
-          'json',
-        ],
-        dependencies,
-      ),
-    ).resolves.toBe(0);
-    expect(calls).toEqual([['qwen3-4b-q4-k-m', 'qwen3-1.7b-q4-k-m']]);
-    expect(writes).toEqual([{ value: report(true), format: 'json' }]);
-
-    dependencies.benchmark = {
-      run: () => Promise.resolve(report(false)),
-    };
-    await expect(runCli(['model', 'benchmark'], dependencies)).resolves.toBe(1);
-
-    dependencies.benchmark = {
-      run: () =>
-        Promise.reject(
-          new CliFailure('Model weights are missing', exitCodes.prerequisite),
-        ),
-    };
-    await expect(runCli(['model', 'benchmark'], dependencies)).resolves.toBe(3);
-    await expect(
-      runCli(['model', 'benchmark', '--format', 'xml'], dependencies),
-    ).resolves.toBe(2);
-  });
 });
 
 function report(qualified: boolean): BenchmarkReport {
@@ -387,36 +338,6 @@ function profileReport(profile: RuntimeProfile) {
       commentarySamples: [],
       qualified: false,
       status: 'FAIL' as const,
-    },
-  };
-}
-
-function cliDependencies(
-  benchmark: NonNullable<CliDependencies['benchmark']>,
-  writes: Array<{ value: unknown; format?: 'json' | 'human' }>,
-): CliDependencies {
-  const unused = () => Promise.resolve();
-  return {
-    benchmark,
-    database: {
-      migrate: unused,
-      status: unused,
-      backup: () => Promise.resolve(''),
-    },
-    model: {
-      pull: unused,
-      start: unused,
-      stop: unused,
-      status: unused,
-      logs: unused,
-    },
-    gateway: { dev: unused, start: unused, stop: unused, health: unused },
-    client: { build: unused, dev: unused, serve: unused, stop: unused },
-    doctor: () => Promise.resolve({ ok: true, checks: [] }),
-    output: {
-      write: (value, format) =>
-        writes.push({ value, ...(format ? { format } : {}) }),
-      error: () => undefined,
     },
   };
 }

@@ -1,26 +1,45 @@
-import { constants } from 'node:fs';
+import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { constants, createReadStream } from 'node:fs';
 import { access, mkdir, writeFile } from 'node:fs/promises';
 import { cpus, totalmem } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { arch, platform, version as nodeVersion } from 'node:process';
+import { promisify } from 'node:util';
+import { fileURLToPath } from 'node:url';
 
 import { legalMoves, reconstructGame } from '@chess-llama/chess-domain';
 import { LlamaCppClient } from '@chess-llama/llama-protocol';
 import { StockfishJsAnalyzer } from '@chess-llama/stockfish-adapter';
-import type { Command } from 'commander';
+import type { RuntimeManifest, RuntimeProfile } from '@chess-llama/contracts';
+import benchmarkFixtureData from '../../../tests/fixtures/benchmarks/positions.json' with { type: 'json' };
+import { loadRuntimeManifest } from './runtime.js';
 
-import type { CliDependencies } from '../dependencies.js';
-import {
-  CliFailure,
-  exitCodes,
-  parseOutputFormat,
-  PassthroughExit,
-} from '../output.js';
-import { outputFor } from '../program.js';
-import type { ChessLlamaPaths } from '../paths.js';
-import type { RuntimeManifest, RuntimeProfile } from '../runtime/types.js';
-import { sha256File } from '../runtime/download.js';
-import benchmarkFixtureData from '../../../../tests/fixtures/benchmarks/positions.json' with { type: 'json' };
+const execFileAsync = promisify(execFile);
+
+export interface ChessLlamaPaths {
+  benchmarksDir: string;
+  modelDir: string;
+}
+
+export const exitCodes = {
+  unexpected: 1,
+  input: 2,
+  prerequisite: 3,
+  runtime: 4,
+  health: 5,
+  storage: 6,
+} as const;
+
+export class CliFailure extends Error {
+  public constructor(
+    message: string,
+    public readonly code: number,
+    options?: { cause?: unknown },
+  ) {
+    super(message, options);
+  }
+}
 
 const MAX_CANDIDATE_LOSS_CP = 150;
 const CANDIDATE_LIMIT = 5;
@@ -266,44 +285,6 @@ export async function runInstalledBenchmarks(
   return { ...report, reportFile };
 }
 
-export function registerBenchmarkCommand(
-  model: Command,
-  dependencies: CliDependencies,
-): void {
-  model
-    .command('benchmark')
-    .description('qualify installed model profiles against the position suite')
-    .option(
-      '--profile <id>',
-      'profile to benchmark (repeatable)',
-      collectProfile,
-      [],
-    )
-    .option('--format <format>', 'output format', 'human')
-    .action(
-      async (options: { profile: string[]; format?: 'json' | 'human' }) => {
-        const format = parseOutputFormat(options.format);
-        if (dependencies.benchmark === undefined) {
-          throw new CliFailure(
-            'Benchmark dependencies are not configured',
-            exitCodes.prerequisite,
-          );
-        }
-        const report = await dependencies.benchmark.run(
-          options.profile,
-          dependencies.signal,
-        );
-        outputFor(dependencies).write(
-          format === 'human' ? benchmarkHumanRows(report) : report,
-          format,
-        );
-        if (!report.qualified) {
-          throw new PassthroughExit('Benchmark qualification failed', 1);
-        }
-      },
-    );
-}
-
 async function runProfileBenchmark(
   profile: RuntimeProfile,
   fixtures: readonly BenchmarkFixture[],
@@ -502,10 +483,6 @@ function median(values: readonly number[]): number | null {
   return left === undefined || right === undefined ? null : (left + right) / 2;
 }
 
-function collectProfile(value: string, previous: string[]): string[] {
-  return [...previous, value];
-}
-
 function isFixture(value: unknown): value is BenchmarkFixture {
   return (
     typeof value === 'object' &&
@@ -529,4 +506,92 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function messageFor(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+export async function sha256File(
+  path: string,
+  signal?: AbortSignal,
+): Promise<string> {
+  const hash = createHash('sha256');
+  const stream: AsyncIterable<unknown> = createReadStream(path, { signal });
+  for await (const chunk of stream) {
+    if (!Buffer.isBuffer(chunk))
+      throw new Error(`Unexpected data while hashing ${path}`);
+    hash.update(chunk);
+  }
+  return hash.digest('hex');
+}
+
+async function readStdin(): Promise<string> {
+  let source = '';
+  for await (const chunk of process.stdin) source += String(chunk);
+  return source;
+}
+
+async function main(): Promise<void> {
+  const operation = process.argv[2];
+  if (operation === 'rows') {
+    const report = JSON.parse(await readStdin()) as BenchmarkReport;
+    process.stdout.write(`${JSON.stringify(benchmarkHumanRows(report))}\n`);
+    return;
+  }
+  if (operation !== 'run') {
+    throw new CliFailure(
+      `Unknown benchmark operation: ${operation ?? ''}`,
+      exitCodes.input,
+    );
+  }
+
+  const projectRoot = process.env.CHESS_LLAMA_PROJECT_ROOT;
+  const manifestFile = process.env.CHESS_LLAMA_RUNTIME_MANIFEST;
+  const modelDir = process.env.CHESS_LLAMA_MODEL_DIR;
+  const benchmarksDir = process.env.CHESS_LLAMA_BENCHMARKS_DIR;
+  if (!projectRoot || !manifestFile || !modelDir || !benchmarksDir) {
+    throw new CliFailure(
+      'Benchmark environment is incomplete',
+      exitCodes.prerequisite,
+    );
+  }
+  const manifest = await loadRuntimeManifest(manifestFile);
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  process.once('SIGINT', abort);
+  process.once('SIGTERM', abort);
+  try {
+    const report = await runInstalledBenchmarks({
+      paths: { modelDir, benchmarksDir },
+      manifest,
+      profileIds: process.argv.slice(3),
+      signal: controller.signal,
+      prepareProfile: async (profileId, signal) => {
+        try {
+          await execFileAsync(
+            resolve(projectRoot, 'chess-llama'),
+            ['model', 'start', '--profile', profileId],
+            { cwd: projectRoot, env: process.env, signal },
+          );
+        } catch (error) {
+          throw new CliFailure(
+            `Unable to start benchmark profile ${profileId}`,
+            exitCodes.runtime,
+            { cause: error },
+          );
+        }
+      },
+    });
+    process.stdout.write(`${JSON.stringify(report)}\n`);
+  } finally {
+    process.removeListener('SIGINT', abort);
+    process.removeListener('SIGTERM', abort);
+  }
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  main().catch((error: unknown) => {
+    process.stderr.write(
+      `${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    process.exitCode =
+      error instanceof CliFailure ? error.code : exitCodes.unexpected;
+  });
 }
