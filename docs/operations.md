@@ -40,6 +40,8 @@ Do not change the gateway host to `0.0.0.0`; the MVP is intentionally local-only
 
 Stable exit codes are: `0` success, `1` unexpected failure or failed model qualification, `2` invalid input/configuration, `3` missing prerequisite, `4` runtime start failure, `5` health failure, and `6` storage/migration failure.
 
+`doctor --format human` groups required startup checks separately from optional runtime status and prints remediation steps for blocking failures. Status markers use color only when stdout is an eligible terminal; redirected output, `TERM=dumb`, and the `NO_COLOR` environment variable produce plain text. The default `doctor` output remains JSON for scripts and complete diagnostic details.
+
 ## Local paths
 
 | Data | Default | Override |

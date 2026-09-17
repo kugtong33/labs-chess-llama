@@ -48,6 +48,127 @@ chess_llama_doctor_report() {
   ' "${CHESS_LLAMA_DOCTOR_VALUES[@]}"
 }
 
+chess_llama_doctor_human_report() {
+  local report=$1
+  # JavaScript template expressions are intentional in the single-quoted source.
+  # shellcheck disable=SC2016
+  printf '%s' "$report" | node --input-type=module -e '
+    let source = "";
+    for await (const chunk of process.stdin) source += chunk;
+    const report = JSON.parse(source);
+
+    const colorEnabled = Boolean(
+      process.stdout.isTTY &&
+      process.env.TERM !== "dumb" &&
+      process.env.NO_COLOR === undefined
+    );
+    const paint = (code, value) => colorEnabled ? `\u001b[${code}m${value}\u001b[0m` : value;
+    const normalize = (value) => String(value)
+      .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "")
+      .replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const truncate = (value, limit = 100) => {
+      const normalized = normalize(value);
+      const codePoints = Array.from(normalized);
+      return codePoints.length <= limit
+        ? normalized
+        : `${codePoints.slice(0, limit - 3).join("")}...`;
+    };
+    const labels = new Map([
+      ["bash", "Bash"],
+      ["node", "Node.js"],
+      ["pnpm", "pnpm"],
+      ["docker", "Docker"],
+      ["compose", "Docker Compose"],
+      ["curl", "curl"],
+      ["flock", "flock"],
+      ["script", "script"],
+      ["setsid", "setsid"],
+      ["sha256sum", "sha256sum"],
+      ["ss", "ss"],
+      ["nvidia", "NVIDIA container GPU"],
+      ["xdg:config", "Config directory"],
+      ["xdg:database", "Database directory"],
+      ["xdg:backups", "Backup directory"],
+      ["xdg:benchmarks", "Benchmark directory"],
+      ["xdg:models", "Model directory"],
+      ["migration", "Database migration"],
+      ["model-installed", "Model weights"],
+      ["model-health", "Model health"],
+      ["gateway-health", "Gateway health"],
+    ]);
+    const labelFor = (check) => check.name.startsWith("port:")
+      ? `Port ${check.name.slice("port:".length)}`
+      : labels.get(check.name) ?? check.name;
+    const markerFor = (check) => {
+      if (check.ok) return paint("32", "[OK]  ");
+      return check.requiredForDev ? paint("31", "[FAIL]") : paint("33", "[WARN]");
+    };
+    const detailFor = (check) => {
+      if (check.name.startsWith("port:") && !check.ok) {
+        return "in use; stop its owner if Chess Llama should bind this port";
+      }
+      return truncate(check.detail);
+    };
+    const remedyFor = (check) => {
+      if (
+        ["nvidia", "model-installed"].includes(check.name) &&
+        normalize(check.detail).toLowerCase().includes("runtime manifest operation is unavailable")
+      ) {
+        return "Run pnpm build before checking the runtime or model.";
+      }
+      const commandRemedies = new Map([
+        ["bash", "Run Chess Llama with Bash 5 or newer."],
+        ["node", "Install and activate Node.js 24."],
+        ["pnpm", "Run corepack prepare pnpm@11.5.1 --activate."],
+        ["docker", "Start Docker and ensure this user can access the Docker daemon."],
+        ["compose", "Install or enable the Docker Compose plugin."],
+        ["nvidia", "Verify the NVIDIA driver and Container Toolkit, then pull the pinned model image."],
+        ["model-installed", "Run ./chess-llama model pull to install and verify the default model."],
+      ]);
+      if (commandRemedies.has(check.name)) return commandRemedies.get(check.name);
+      if (["curl", "flock", "script", "setsid", "sha256sum", "ss"].includes(check.name)) {
+        return `Install the ${check.name} command and ensure it is on PATH.`;
+      }
+      if (check.name.startsWith("xdg:")) {
+        const path = normalize(check.detail).replace(/ is not writable$/, "");
+        return `Make ${path} writable by the current user.`;
+      }
+      return `Resolve the reported ${labelFor(check)} failure and rerun doctor.`;
+    };
+    const renderSection = (title, checks) => {
+      const lines = [title];
+      for (const check of checks) {
+        lines.push(`  ${markerFor(check)} ${labelFor(check).padEnd(20)} ${detailFor(check)}`);
+      }
+      return lines;
+    };
+
+    const required = report.checks.filter((check) => check.requiredForDev);
+    const runtime = report.checks.filter((check) => !check.requiredForDev);
+    const failures = required.filter((check) => !check.ok);
+    const status = report.prerequisitesOk
+      ? paint("32", "READY (all required checks passed)")
+      : paint("31", `NOT READY (${failures.length} required ${failures.length === 1 ? "check" : "checks"} failed)`);
+    const lines = [
+      paint("1", "Chess Llama Doctor"),
+      `Status: ${status}`,
+      "",
+      ...renderSection("Required for startup", required),
+      "",
+      ...renderSection("Runtime status", runtime),
+    ];
+    if (failures.length > 0) {
+      lines.push("", "Next steps");
+      failures.forEach((check, index) => {
+        lines.push(truncate(`  ${index + 1}. ${labelFor(check)}: ${remedyFor(check)}`, 140));
+      });
+    }
+    process.stdout.write(`${lines.join("\n")}\n`);
+  '
+}
+
 chess_llama_doctor_main() {
   if [[ ${1:-} == -h || ${1:-} == --help || ${1:-} == help ]]; then
     printf 'Usage: chess-llama doctor [--format json|human]\n\ncheck local prerequisites\n'
@@ -70,7 +191,7 @@ chess_llama_doctor_main() {
   else
     chess_llama_doctor_add pnpm false "$version" true
   fi
-  chess_llama_doctor_command docker true docker info
+  chess_llama_doctor_command docker true docker info --format '{{.ServerVersion}}'
   chess_llama_doctor_command compose true docker compose version
   local tool
   for tool in curl flock script setsid sha256sum ss; do
@@ -111,19 +232,21 @@ EOF
     chess_llama_doctor_add migration false "${detail:-Operations build is missing}" false
   fi
 
-  local profile model_file expected actual
-  if profile=$(chess_llama_preferred_profile 2>/dev/null) &&
-    model_file=$(chess_llama_profile_field "$profile" file 2>/dev/null) &&
-    expected=$(chess_llama_profile_field "$profile" sha256 2>/dev/null) &&
-    [[ -f $CHESS_LLAMA_MODEL_DIR/$model_file && -r $CHESS_LLAMA_MODEL_DIR/$model_file ]]; then
+  local profile='' model_file='' expected='' actual=''
+  if ! profile=$(chess_llama_preferred_profile 2>/dev/null); then
+    chess_llama_doctor_add model-installed false 'Runtime manifest operation is unavailable' true
+  elif ! model_file=$(chess_llama_profile_field "$profile" file 2>/dev/null) ||
+    ! expected=$(chess_llama_profile_field "$profile" sha256 2>/dev/null); then
+    chess_llama_doctor_add model-installed false 'Selected model profile is unavailable' true
+  elif [[ ! -f $CHESS_LLAMA_MODEL_DIR/$model_file || ! -r $CHESS_LLAMA_MODEL_DIR/$model_file ]]; then
+    chess_llama_doctor_add model-installed false "Model file is not installed: $model_file" true
+  else
     actual=$(sha256sum -- "$CHESS_LLAMA_MODEL_DIR/$model_file" | awk '{print $1}')
     if [[ $actual == "$expected" ]]; then
       chess_llama_doctor_add model-installed true "$model_file checksum verified" true
     else
       chess_llama_doctor_add model-installed false "Installed model checksum mismatch: $model_file" true
     fi
-  else
-    chess_llama_doctor_add model-installed false 'Selected model is not installed or runtime manifest is unavailable' true
   fi
 
   if curl --fail --silent --show-error --max-time 2 http://127.0.0.1:8080/v1/health >/dev/null 2>&1; then
@@ -139,7 +262,11 @@ EOF
 
   local report
   report=$(chess_llama_doctor_report)
-  chess_llama_render_json "$CHESS_LLAMA_FORMAT" "$report"
+  if [[ $CHESS_LLAMA_FORMAT == human ]]; then
+    chess_llama_doctor_human_report "$report"
+  else
+    printf '%s\n' "$report"
+  fi
   if [[ $CHESS_LLAMA_DOCTOR_PREREQUISITES_OK != true ]]; then
     return "$CHESS_LLAMA_EXIT_PREREQUISITE"
   fi

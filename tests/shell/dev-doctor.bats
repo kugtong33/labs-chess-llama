@@ -4,6 +4,29 @@
 
 load test_helper
 
+install_doctor_status_fakes() {
+  export CHESS_LLAMA_TEST_TRACE=$TEST_ROOT/doctor-trace
+  make_tool pnpm <<'EOF'
+printf '11.5.1\n'
+EOF
+  make_tool docker <<'EOF'
+printf '%s\n' "$*" >>"$CHESS_LLAMA_TEST_TRACE"
+case "$1" in
+  info)
+    printf 'Client:\n Version: 29.7.2\n\nServer:\npermission denied while connecting to Docker\n'
+    exit 1
+    ;;
+  compose)
+    printf 'Docker Compose version v5.3.1\n'
+    ;;
+  run)
+    printf 'GPU runtime unavailable\n' >&2
+    exit 1
+    ;;
+esac
+EOF
+}
+
 @test "doctor reports JSON checks and the prerequisite exit code" {
   make_tool pnpm <<'EOF'
 printf '0.0.0\n'
@@ -20,6 +43,120 @@ EOF
   assert_output_contains '"name":"node","ok":true'
   assert_output_contains '"name":"pnpm","ok":false'
   assert_output_contains '"name":"docker","ok":false'
+}
+
+@test "doctor human output is grouped compact and actionable" {
+  install_doctor_status_fakes
+
+  run --keep-empty-lines --separate-stderr "$PROJECT_ROOT/chess-llama" doctor --format human
+
+  [ "$status" -eq 3 ]
+  assert_output_contains "Chess Llama Doctor"
+  assert_output_contains "Status: NOT READY"
+  assert_output_contains "Required for startup"
+  assert_output_contains "Runtime status"
+  assert_output_contains "[FAIL] Docker"
+  assert_output_contains "[WARN] Model health"
+  assert_output_contains "Next steps"
+  assert_output_contains "Start Docker and ensure this user can access the Docker daemon."
+  [[ $output != *$'\033['* ]]
+  [[ $output != *$'\n Version: 29.7.2'* ]]
+  while IFS= read -r line; do
+    [ "${#line}" -le 140 ]
+  done <<<"$output"
+  assert_trace_contains 'info --format {{.ServerVersion}}'
+}
+
+@test "doctor colors status markers only on an eligible TTY" {
+  install_doctor_status_fakes
+  export TERM=xterm-256color
+  unset NO_COLOR
+
+  run --keep-empty-lines --separate-stderr script --quiet --return \
+    --command "$PROJECT_ROOT/chess-llama doctor --format human" /dev/null
+
+  [ "$status" -eq 3 ]
+  [[ $output == *$'\033[31m[FAIL]\033[0m'* ]]
+
+  export NO_COLOR=1
+  run --keep-empty-lines --separate-stderr script --quiet --return \
+    --command "$PROJECT_ROOT/chess-llama doctor --format human" /dev/null
+
+  [ "$status" -eq 3 ]
+  [[ $output != *$'\033['* ]]
+
+  unset NO_COLOR
+  export TERM=dumb
+  run --keep-empty-lines --separate-stderr script --quiet --return \
+    --command "$PROJECT_ROOT/chess-llama doctor --format human" /dev/null
+
+  [ "$status" -eq 3 ]
+  [[ $output != *$'\033['* ]]
+}
+
+@test "doctor optional warnings do not change ready status" {
+  local report='{"ok":true,"prerequisitesOk":true,"checks":[{"name":"bash","ok":true,"detail":"5.2.21","requiredForDev":true},{"name":"model-health","ok":false,"detail":"health endpoint unavailable","requiredForDev":false}]}'
+
+  run --keep-empty-lines --separate-stderr bash -c \
+    'source "$1"; chess_llama_doctor_human_report "$2"' \
+    _ "$PROJECT_ROOT/scripts/cli/doctor.sh" "$report"
+
+  [ "$status" -eq 0 ]
+  assert_output_contains "Status: READY (all required checks passed)"
+  assert_output_contains "[WARN] Model health"
+  [[ $output != *"Next steps"* ]]
+}
+
+@test "doctor bounds long remediation and prioritizes a missing operations build" {
+  local long_path
+  long_path=/$(
+    printf 'directory%.0s' {1..24}
+  )/models
+  local report="{\"ok\":false,\"prerequisitesOk\":false,\"checks\":[{\"name\":\"nvidia\",\"ok\":false,\"detail\":\"Runtime manifest operation is unavailable\",\"requiredForDev\":true},{\"name\":\"xdg:models\",\"ok\":false,\"detail\":\"$long_path is not writable\",\"requiredForDev\":true},{\"name\":\"model-installed\",\"ok\":false,\"detail\":\"Runtime manifest operation is unavailable\",\"requiredForDev\":true}]}"
+
+  run --keep-empty-lines --separate-stderr bash -c \
+    'source "$1"; chess_llama_doctor_human_report "$2"' \
+    _ "$PROJECT_ROOT/scripts/cli/doctor.sh" "$report"
+
+  [ "$status" -eq 0 ]
+  assert_output_contains "Run pnpm build before checking the runtime or model."
+  while IFS= read -r line; do
+    [ "${#line}" -le 140 ]
+  done <<<"$output"
+}
+
+@test "doctor truncates human details without splitting Unicode characters" {
+  local prefix
+  prefix=$(printf 'a%.0s' {1..96})
+  local report="{\"ok\":true,\"prerequisitesOk\":true,\"checks\":[{\"name\":\"model-health\",\"ok\":false,\"detail\":\"${prefix}😀tail\",\"requiredForDev\":false}]}"
+
+  run --keep-empty-lines --separate-stderr bash -c \
+    'source "$1"; chess_llama_doctor_human_report "$2"' \
+    _ "$PROJECT_ROOT/scripts/cli/doctor.sh" "$report"
+
+  [ "$status" -eq 0 ]
+  [[ $output == *"😀..."* ]]
+  [[ $output != *"�"* ]]
+}
+
+@test "doctor keeps JSON as the default stable machine contract" {
+  install_doctor_status_fakes
+
+  run --separate-stderr "$PROJECT_ROOT/chess-llama" doctor
+
+  [ "$status" -eq 3 ]
+  JSON_ACTUAL=$output "$TEST_NODE" --input-type=module -e '
+    import assert from "node:assert/strict";
+    const report = JSON.parse(process.env.JSON_ACTUAL);
+    assert.deepStrictEqual(Object.keys(report), ["ok", "prerequisitesOk", "checks"]);
+    assert.equal(report.ok, false);
+    assert.equal(report.prerequisitesOk, false);
+    assert.ok(report.checks.length > 0);
+    for (const check of report.checks) {
+      assert.deepStrictEqual(Object.keys(check), ["name", "ok", "detail", "requiredForDev"]);
+    }
+    assert.match(report.checks.find((check) => check.name === "docker").detail, /\n/);
+  '
 }
 
 @test "dev stops before startup when prerequisites fail" {
