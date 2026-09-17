@@ -28,28 +28,44 @@ chess_llama_gateway_main() {
       ;;
     dev)
       chess_llama_gateway_environment
+      chess_llama_info gateway 'starting development server' \
+        entry "$CHESS_LLAMA_PROJECT_ROOT/apps/gateway/src/main.ts" \
+        database "$DATABASE_PATH" llamaUrl "$LLAMA_BASE_URL" clientOrigin "$CLIENT_ORIGIN" \
+        url http://127.0.0.1:3001
+      chess_llama_debug_command gateway node --import tsx "$CHESS_LLAMA_PROJECT_ROOT/apps/gateway/src/main.ts"
       chess_llama_run_in_project node --import tsx "$CHESS_LLAMA_PROJECT_ROOT/apps/gateway/src/main.ts" || {
-        printf 'Gateway development server failed\n' >&2
+        local status=$?
+        chess_llama_error gateway 'development server failed' exitCode "$status"
         return "$CHESS_LLAMA_EXIT_RUNTIME"
       }
+      chess_llama_ok gateway 'development server stopped'
       ;;
     start)
       chess_llama_gateway_environment
-      if [[ ! -f $CHESS_LLAMA_PROJECT_ROOT/apps/gateway/dist/main.js ]]; then
-        printf 'Gateway build is missing; run pnpm build\n' >&2
+      local entry=$CHESS_LLAMA_PROJECT_ROOT/apps/gateway/dist/main.js
+      if [[ ! -f $entry ]]; then
+        chess_llama_error gateway 'compiled entrypoint is missing; run pnpm build' entry "$entry"
         return "$CHESS_LLAMA_EXIT_PREREQUISITE"
       fi
-      chess_llama_run_in_project node "$CHESS_LLAMA_PROJECT_ROOT/apps/gateway/dist/main.js" || {
-        printf 'Gateway start failed\n' >&2
+      chess_llama_info gateway 'starting compiled server' entry "$entry" database "$DATABASE_PATH" \
+        llamaUrl "$LLAMA_BASE_URL" clientOrigin "$CLIENT_ORIGIN" url http://127.0.0.1:3001
+      chess_llama_debug_command gateway node "$entry"
+      chess_llama_run_in_project node "$entry" || {
+        local status=$?
+        chess_llama_error gateway 'compiled server failed' exitCode "$status"
         return "$CHESS_LLAMA_EXIT_RUNTIME"
       }
+      chess_llama_ok gateway 'compiled server stopped'
       ;;
     health)
       shift
       chess_llama_parse_format "$@" || return
       local output
+      chess_llama_debug gateway 'checking health' endpoint http://127.0.0.1:3001/api/health
+      chess_llama_debug_command gateway curl --fail --silent --show-error --max-time 5 http://127.0.0.1:3001/api/health
       output=$(curl --fail --silent --show-error --max-time 5 http://127.0.0.1:3001/api/health) || {
-        printf 'Gateway health check failed\n' >&2
+        local status=$?
+        chess_llama_error gateway 'health check failed' endpoint http://127.0.0.1:3001/api/health exitCode "$status"
         return "$CHESS_LLAMA_EXIT_HEALTH"
       }
       chess_llama_render_json "$CHESS_LLAMA_FORMAT" "$output"

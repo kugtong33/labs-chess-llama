@@ -15,6 +15,8 @@ chess_llama_doctor_command() {
   local name=$1 required=$2
   shift 2
   local detail
+  chess_llama_debug doctor 'running check' check "$name" required "$required"
+  chess_llama_debug_command doctor "$@"
   if detail=$("$@" 2>&1); then
     chess_llama_doctor_add "$name" true "${detail:-ok}" "$required"
   else
@@ -24,6 +26,7 @@ chess_llama_doctor_command() {
 
 chess_llama_doctor_port() {
   local port=$1
+  chess_llama_debug doctor 'checking port' port "$port"
   if ss -ltn 2>/dev/null | awk '{print $4}' | grep -Eq "(^|:)$port$"; then
     chess_llama_doctor_add "port:$port" false 'in use' false
   else
@@ -176,6 +179,8 @@ chess_llama_doctor_main() {
   fi
   chess_llama_parse_format "$@" || return
   chess_llama_resolve_paths
+  chess_llama_debug doctor 'resolved paths' database "$CHESS_LLAMA_DATABASE_FILE" models "$CHESS_LLAMA_MODEL_DIR" \
+    backups "$CHESS_LLAMA_BACKUPS_DIR" benchmarks "$CHESS_LLAMA_BENCHMARKS_DIR" compose "$CHESS_LLAMA_COMPOSE_FILE"
   CHESS_LLAMA_DOCTOR_VALUES=()
   CHESS_LLAMA_DOCTOR_PREREQUISITES_OK=true
 
@@ -207,6 +212,7 @@ chess_llama_doctor_main() {
 
   local name directory
   while read -r name directory; do
+    chess_llama_debug doctor 'checking path' name "$name" path "$directory"
     if mkdir -p -- "$directory" 2>/dev/null && [[ -w $directory ]]; then
       chess_llama_doctor_add "xdg:$name" true "$directory" true
     else
@@ -226,6 +232,7 @@ EOF
 
   local database_entry=${CHESS_LLAMA_DATABASE_ENTRY:-$CHESS_LLAMA_PROJECT_ROOT/apps/operations/dist/database.js}
   local detail
+  chess_llama_debug doctor 'checking migration state' entry "$database_entry" database "$CHESS_LLAMA_DATABASE_FILE"
   if [[ -f $database_entry ]] && detail=$(node "$database_entry" status 2>&1); then
     chess_llama_doctor_add migration "$([[ $detail == *'"pending":false'* ]] && printf true || printf false)" "$detail" false
   else
@@ -233,6 +240,7 @@ EOF
   fi
 
   local profile='' model_file='' expected='' actual=''
+  chess_llama_debug doctor 'checking installed model' directory "$CHESS_LLAMA_MODEL_DIR"
   if ! profile=$(chess_llama_preferred_profile 2>/dev/null); then
     chess_llama_doctor_add model-installed false 'Runtime manifest operation is unavailable' true
   elif ! model_file=$(chess_llama_profile_field "$profile" file 2>/dev/null) ||
@@ -249,11 +257,13 @@ EOF
     fi
   fi
 
+  chess_llama_debug doctor 'checking service health' service=model endpoint http://127.0.0.1:8080/v1/health
   if curl --fail --silent --show-error --max-time 2 http://127.0.0.1:8080/v1/health >/dev/null 2>&1; then
     chess_llama_doctor_add model-health true 'HTTP 200' false
   else
     chess_llama_doctor_add model-health false 'health endpoint unavailable' false
   fi
+  chess_llama_debug doctor 'checking service health' service=gateway endpoint http://127.0.0.1:3001/api/health
   if curl --fail --silent --show-error --max-time 2 http://127.0.0.1:3001/api/health >/dev/null 2>&1; then
     chess_llama_doctor_add gateway-health true 'HTTP 200' false
   else
@@ -268,6 +278,7 @@ EOF
     printf '%s\n' "$report"
   fi
   if [[ $CHESS_LLAMA_DOCTOR_PREREQUISITES_OK != true ]]; then
+    chess_llama_error doctor 'prerequisite checks failed' exitCode "$CHESS_LLAMA_EXIT_PREREQUISITE"
     return "$CHESS_LLAMA_EXIT_PREREQUISITE"
   fi
 }

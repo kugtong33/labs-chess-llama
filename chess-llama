@@ -7,7 +7,4 @@ readonly CHESS_LLAMA_PROJECT_ROOT
 # shellcheck source=scripts/cli/core.sh
 source "$CHESS_LLAMA_PROJECT_ROOT/scripts/cli/core.sh"
 
-if [[ ${1:-} == -- ]]; then
-  shift
-fi
 chess_llama_main "$@"

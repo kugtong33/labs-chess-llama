@@ -42,6 +42,27 @@ Stable exit codes are: `0` success, `1` unexpected failure or failed model quali
 
 `doctor --format human` groups required startup checks separately from optional runtime status and prints remediation steps for blocking failures. Status markers use color only when stdout is an eligible terminal; redirected output, `TERM=dumb`, and the `NO_COLOR` environment variable produce plain text. The default `doctor` output remains JSON for scripts and complete diagnostic details.
 
+## CLI logging
+
+Operational commands print concise lifecycle logs to standard error. Each line identifies its level and component, then reports the active stage and important resolved values such as profiles, paths, images, ports, endpoints, ownership decisions, and subprocess exit codes:
+
+```text
+[INFO] model: starting runtime profile=qwen3-4b-q4-k-m file=Qwen3-4B-Q4_K_M.gguf port=8080
+[OK] model: runtime ready profile=qwen3-4b-q4-k-m model=Qwen3-4B-Q4_K_M.gguf url=http://127.0.0.1:8080
+```
+
+Add the global `--verbose` option before the command to show probe decisions and shell-escaped native commands:
+
+```bash
+./chess-llama --verbose dev
+./chess-llama --verbose model start --profile qwen3-4b-q4-k-m
+CHESS_LLAMA_LOG_LEVEL=debug ./chess-llama doctor --format json
+```
+
+`CHESS_LLAMA_LOG_LEVEL=debug` is equivalent to `--verbose` and is useful in scripts. Report commands keep routine progress quiet unless debug logging is enabled. Their JSON or human result remains on standard output; lifecycle and error context use standard error, so redirection and pipelines remain reliable. Debug rendering removes URL credentials, queries, fragments, and secret-like argument values.
+
+Log markers use color only when standard error is an eligible terminal. Set `NO_COLOR` or `TERM=dumb`, or redirect standard error, for plain text. The CLI does not persist or rotate lifecycle logs; native Vite, Node, Docker, and curl streams remain unchanged.
+
 ## Local paths
 
 | Data | Default | Override |

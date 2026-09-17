@@ -43,6 +43,7 @@ EOF
   assert_output_contains '"name":"node","ok":true'
   assert_output_contains '"name":"pnpm","ok":false'
   assert_output_contains '"name":"docker","ok":false'
+  assert_stderr_contains "[ERROR] doctor: prerequisite checks failed exitCode=3"
 }
 
 @test "doctor human output is grouped compact and actionable" {
@@ -159,6 +160,18 @@ EOF
   '
 }
 
+@test "verbose doctor traces checks without contaminating JSON" {
+  install_doctor_status_fakes
+
+  run --separate-stderr "$PROJECT_ROOT/chess-llama" --verbose doctor --format json
+
+  [ "$status" -eq 3 ]
+  JSON_ACTUAL=$output "$TEST_NODE" --input-type=module -e 'JSON.parse(process.env.JSON_ACTUAL)'
+  assert_stderr_contains "[DEBUG] doctor: running check check=docker"
+  assert_stderr_contains "[DEBUG] doctor: run docker info --format"
+  assert_stderr_contains "[DEBUG] doctor: checking path name=models"
+}
+
 @test "dev stops before startup when prerequisites fail" {
   make_tool pnpm <<'EOF'
 printf '0.0.0\n'
@@ -171,6 +184,38 @@ EOF
 
   [ "$status" -eq 3 ]
   [ -z "$output" ]
+  assert_stderr_contains "[INFO] dev: checking prerequisites"
+  assert_stderr_contains "[ERROR] dev: prerequisite check failed exitCode=3"
+  assert_stderr_contains "Chess Llama Doctor"
+  assert_stderr_contains "Required for startup"
+}
+
+@test "dev reports reuse start supervision and the managed service that exits" {
+  run --separate-stderr bash -c '
+    set -Eeuo pipefail
+    CHESS_LLAMA_PROJECT_ROOT=$1
+    source "$1/scripts/cli/core.sh"
+    chess_llama_doctor_main() {
+      printf "%s\n" "{\"ok\":true,\"prerequisitesOk\":true,\"checks\":[]}"
+    }
+    chess_llama_database_main() { :; }
+    chess_llama_model_status() {
+      printf "%s\n" "{\"containerState\":\"running\",\"healthy\":true,\"modelId\":\"model.gguf\",\"profileId\":\"test-profile\",\"port\":8080}"
+    }
+    curl() { return 22; }
+    ss() { printf "%s\n" "LISTEN 0 128 127.0.0.1:5173"; }
+    setsid() { sleep 0.1; return 17; }
+    chess_llama_dev_main
+  ' _ "$PROJECT_ROOT"
+
+  [ "$status" -eq 17 ]
+  assert_stderr_contains "[OK] dev: prerequisites passed"
+  assert_stderr_contains "[INFO] dev: reusing model runtime profile=test-profile"
+  assert_stderr_contains "[INFO] dev: starting gateway url=http://127.0.0.1:3001"
+  assert_stderr_contains "[INFO] dev: reusing client url=http://127.0.0.1:5173"
+  assert_stderr_contains "[INFO] dev: service topology configured"
+  [[ $stderr != *"[OK] dev: stack available"* ]]
+  assert_stderr_contains "[ERROR] dev: managed service exited service=gateway exitCode=17"
 }
 
 @test "dev isolates children and terminates process groups in reverse order" {

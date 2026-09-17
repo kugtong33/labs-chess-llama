@@ -23,7 +23,7 @@ chess_llama_runtime_entry() {
 chess_llama_runtime_value() {
   local entry
   entry=$(chess_llama_runtime_entry)
-  chess_llama_require_operations_entry "$entry" || return
+  chess_llama_require_operations_entry "$entry" model || return
   CHESS_LLAMA_RUNTIME_MANIFEST=$CHESS_LLAMA_PROJECT_ROOT/config/runtime-manifest.json \
     node "$entry" "$@"
 }
@@ -67,13 +67,32 @@ chess_llama_preferred_profile() {
 
 chess_llama_select_profile() {
   local profile=${CHESS_LLAMA_REQUESTED_PROFILE:-}
+  local source=explicit
   if [[ -z $profile ]]; then
-    profile=$(chess_llama_preferred_profile) || return
+    source=settings
+    local database_entry=${CHESS_LLAMA_DATABASE_ENTRY:-$CHESS_LLAMA_PROJECT_ROOT/apps/operations/dist/database.js}
+    local preference=''
+    if [[ -f $database_entry ]]; then
+      preference=$(node "$database_entry" preferred-profile 2>/dev/null) || preference=''
+      if [[ -n $preference ]]; then
+        profile=$(printf '%s' "$preference" | node --input-type=module -e '
+          let source = "";
+          for await (const chunk of process.stdin) source += chunk;
+          process.stdout.write(JSON.parse(source).profileId ?? "");
+        ' 2>/dev/null) || profile=''
+      fi
+    fi
+    if [[ -z $profile ]]; then
+      source=manifest-default
+      profile=$(chess_llama_runtime_value default-profile) || return
+    fi
   fi
   if ! chess_llama_runtime_value profile "$profile" >/dev/null; then
+    chess_llama_error model 'profile selection failed' profile "$profile" source "$source"
     return "$CHESS_LLAMA_EXIT_INPUT"
   fi
-  printf '%s\n' "$profile"
+  CHESS_LLAMA_SELECTED_PROFILE=$profile
+  CHESS_LLAMA_PROFILE_SOURCE=$source
 }
 
 chess_llama_profile_field() {
@@ -113,22 +132,36 @@ chess_llama_model_lock() {
 
 chess_llama_model_pull() {
   chess_llama_parse_profile_option "$@" || return
-  local profile
-  profile=$(chess_llama_select_profile) || return
+  chess_llama_select_profile || return
+  local profile=$CHESS_LLAMA_SELECTED_PROFILE
   chess_llama_model_environment "$profile" || return
+  chess_llama_info model 'selected profile' profile "$profile" source "$CHESS_LLAMA_PROFILE_SOURCE" \
+    file "$CHESS_LLAMA_MODEL_FILE" directory "$CHESS_LLAMA_MODEL_DIR" image "$CHESS_LLAMA_IMAGE"
   chess_llama_model_lock || return
   mkdir -p -- "$CHESS_LLAMA_MODEL_DIR"
-  chess_llama_compose pull llama || return "$CHESS_LLAMA_EXIT_PREREQUISITE"
+  chess_llama_info model 'pulling container image' image "$CHESS_LLAMA_IMAGE" compose "$CHESS_LLAMA_COMPOSE_FILE"
+  chess_llama_debug_command model docker compose -f "$CHESS_LLAMA_COMPOSE_FILE" pull llama
+  chess_llama_compose pull llama || {
+    local status=$?
+    chess_llama_error model 'container image pull failed' image "$CHESS_LLAMA_IMAGE" exitCode "$status"
+    return "$CHESS_LLAMA_EXIT_PREREQUISITE"
+  }
+  chess_llama_ok model 'container image available' image "$CHESS_LLAMA_IMAGE"
 
   local destination=$CHESS_LLAMA_MODEL_DIR/$CHESS_LLAMA_MODEL_FILE
-  local expected actual partial
+  local expected actual partial quarantine
   expected=$(chess_llama_profile_field "$profile" sha256) || return
   if [[ -f $destination ]]; then
+    chess_llama_info model 'checking cached weights' path "$destination"
     actual=$(sha256sum -- "$destination" | awk '{print $1}')
     if [[ $actual == "$expected" ]]; then
+      chess_llama_ok model 'weights already installed' path "$destination" checksum "$actual"
       return
     fi
-    mv -- "$destination" "$destination.invalid-$(date +%s%3N)"
+    quarantine=$destination.invalid-$(date +%s%3N)
+    mv -- "$destination" "$quarantine"
+    chess_llama_warn model 'quarantined invalid weights' path "$destination" quarantine "$quarantine" \
+      expected "$expected" actual "$actual"
   fi
 
   partial=$destination.partial
@@ -136,55 +169,83 @@ chess_llama_model_pull() {
   trap 'rm -f -- "${partial:-}"' EXIT INT TERM
   local url
   url=$(chess_llama_profile_field "$profile" url) || return
-  if ! curl --fail --show-error --location --retry 3 --output "$partial" "$url"; then
-    printf 'Model download failed\n' >&2
+  chess_llama_info model 'downloading weights' source "$(chess_llama_sanitize_url "$url")" destination "$destination"
+  chess_llama_debug_command model curl --fail --show-error --location --retry 3 --output "$partial" "$url"
+  local status
+  if curl --fail --show-error --location --retry 3 --output "$partial" "$url"; then
+    :
+  else
+    status=$?
+    chess_llama_error model 'weight download failed' destination "$destination" exitCode "$status"
     return "$CHESS_LLAMA_EXIT_RUNTIME"
   fi
+  chess_llama_info model 'verifying downloaded weights' path "$partial" expected "$expected"
   actual=$(sha256sum -- "$partial" | awk '{print $1}')
   if [[ $actual != "$expected" ]]; then
-    printf 'Model checksum mismatch for %s: expected %s, got %s\n' "$CHESS_LLAMA_MODEL_FILE" "$expected" "$actual" >&2
+    chess_llama_error model 'downloaded weight checksum mismatch' file "$CHESS_LLAMA_MODEL_FILE" expected "$expected" actual "$actual"
     return "$CHESS_LLAMA_EXIT_RUNTIME"
   fi
   sync -f "$partial" 2>/dev/null || true
   mv -- "$partial" "$destination"
   trap - EXIT INT TERM
+  chess_llama_ok model 'weights installed' profile "$profile" path "$destination" checksum "$actual"
 }
 
 chess_llama_model_start() {
   chess_llama_parse_profile_option "$@" || return
-  local profile
-  profile=$(chess_llama_select_profile) || return
+  chess_llama_select_profile || return
+  local profile=$CHESS_LLAMA_SELECTED_PROFILE
   chess_llama_model_environment "$profile" || return
+  chess_llama_info model 'starting runtime' profile "$profile" source "$CHESS_LLAMA_PROFILE_SOURCE" \
+    file "$CHESS_LLAMA_MODEL_FILE" image "$CHESS_LLAMA_IMAGE" port "$CHESS_LLAMA_MODEL_PORT" \
+    compose "$CHESS_LLAMA_COMPOSE_FILE"
   chess_llama_model_lock || return
   local destination=$CHESS_LLAMA_MODEL_DIR/$CHESS_LLAMA_MODEL_FILE
   local expected actual
   expected=$(chess_llama_profile_field "$profile" sha256) || return
   if [[ ! -f $destination ]]; then
-    printf 'Model runtime start failed: model is not installed; run model pull --profile %s\n' "$profile" >&2
+    chess_llama_error model 'runtime start failed: weights are not installed' path "$destination" \
+      remedy "run model pull --profile $profile"
     return "$CHESS_LLAMA_EXIT_RUNTIME"
   fi
+  chess_llama_info model 'verifying installed weights' path "$destination" expected "$expected"
   actual=$(sha256sum -- "$destination" | awk '{print $1}')
   if [[ $actual != "$expected" ]]; then
-    printf 'Model runtime start failed: installed model checksum mismatch\n' >&2
+    chess_llama_error model 'runtime start failed: installed weight checksum mismatch' expected "$expected" actual "$actual"
     return "$CHESS_LLAMA_EXIT_RUNTIME"
   fi
+  chess_llama_ok model 'installed weights verified' path "$destination" checksum "$actual"
+  chess_llama_info model 'recreating container' container "$CHESS_LLAMA_CONTAINER" portBinding "$CHESS_LLAMA_PORT_BINDING"
+  chess_llama_debug_command model docker compose -f "$CHESS_LLAMA_COMPOSE_FILE" up -d --force-recreate llama
   chess_llama_compose up -d --force-recreate llama || {
-    printf 'Model runtime start failed\n' >&2
+    local status=$?
+    chess_llama_error model 'container start failed' container "$CHESS_LLAMA_CONTAINER" exitCode "$status"
     return "$CHESS_LLAMA_EXIT_RUNTIME"
   }
 
   local timeout=${CHESS_LLAMA_HEALTH_TIMEOUT_SECONDS:-120}
   local deadline=$((SECONDS + timeout))
+  local started=$SECONDS
+  chess_llama_info model 'waiting for runtime health' endpoint "http://127.0.0.1:$CHESS_LLAMA_MODEL_PORT/v1/health" timeoutSeconds "$timeout"
+  chess_llama_debug_command model curl --fail --silent --show-error --max-time 2 \
+    "http://127.0.0.1:$CHESS_LLAMA_MODEL_PORT/v1/health"
   until curl --fail --silent --show-error --max-time 2 "http://127.0.0.1:$CHESS_LLAMA_MODEL_PORT/v1/health" >/dev/null 2>&1; do
     if ((SECONDS >= deadline)); then
-      printf 'Model runtime start failed: llama.cpp did not become healthy within %ss\n' "$timeout" >&2
+      chess_llama_error model 'runtime health timed out' endpoint "http://127.0.0.1:$CHESS_LLAMA_MODEL_PORT/v1/health" \
+        timeoutSeconds "$timeout"
       return "$CHESS_LLAMA_EXIT_HEALTH"
     fi
     sleep 1
+    chess_llama_debug model 'runtime is not healthy yet' elapsedSeconds "$((SECONDS - started))" timeoutSeconds "$timeout"
   done
+  chess_llama_ok model 'runtime health check passed' endpoint "http://127.0.0.1:$CHESS_LLAMA_MODEL_PORT/v1/health"
   local discovery model_id
+  chess_llama_debug model 'discovering loaded model' endpoint "http://127.0.0.1:$CHESS_LLAMA_MODEL_PORT/v1/models"
+  chess_llama_debug_command model curl --fail --silent --show-error --max-time 5 \
+    "http://127.0.0.1:$CHESS_LLAMA_MODEL_PORT/v1/models"
   discovery=$(curl --fail --silent --show-error --max-time 5 "http://127.0.0.1:$CHESS_LLAMA_MODEL_PORT/v1/models") || {
-    printf 'Model runtime start failed: /v1/models health check failed\n' >&2
+    local status=$?
+    chess_llama_error model 'model discovery failed' endpoint "http://127.0.0.1:$CHESS_LLAMA_MODEL_PORT/v1/models" exitCode "$status"
     return "$CHESS_LLAMA_EXIT_HEALTH"
   }
   model_id=$(printf '%s' "$discovery" | node --input-type=module -e '
@@ -194,13 +255,15 @@ chess_llama_model_start() {
     if (typeof value !== "string") process.exit(1);
     process.stdout.write(value);
   ') || {
-    printf 'Model runtime start failed: llama.cpp did not report a loaded model\n' >&2
+    chess_llama_error model 'runtime did not report a loaded model'
     return "$CHESS_LLAMA_EXIT_HEALTH"
   }
   if [[ $model_id != "$CHESS_LLAMA_MODEL_FILE" ]]; then
-    printf 'Model runtime start failed: llama.cpp loaded %s, expected %s\n' "$model_id" "$CHESS_LLAMA_MODEL_FILE" >&2
+    chess_llama_error model 'loaded model does not match profile' loaded "$model_id" \
+      expected "$CHESS_LLAMA_MODEL_FILE" profile "$profile"
     return "$CHESS_LLAMA_EXIT_HEALTH"
   fi
+  chess_llama_ok model 'runtime ready' profile "$profile" model "$model_id" url "http://127.0.0.1:$CHESS_LLAMA_MODEL_PORT"
 }
 
 chess_llama_model_stop() {
@@ -210,32 +273,59 @@ chess_llama_model_stop() {
   }
   chess_llama_resolve_paths
   chess_llama_model_lock || return
-  chess_llama_compose rm -s -f llama || return "$CHESS_LLAMA_EXIT_PREREQUISITE"
+  local container=chess-llama-model
+  chess_llama_info model 'stopping runtime' container "$container" compose "$CHESS_LLAMA_COMPOSE_FILE"
+  chess_llama_debug_command model docker compose -f "$CHESS_LLAMA_COMPOSE_FILE" rm -s -f llama
+  chess_llama_compose rm -s -f llama || {
+    local status=$?
+    chess_llama_error model 'runtime stop failed' container "$container" exitCode "$status"
+    return "$CHESS_LLAMA_EXIT_PREREQUISITE"
+  }
+  chess_llama_ok model 'runtime stopped' container "$container"
 }
 
 chess_llama_model_status() {
   chess_llama_parse_format "$@" || return
   chess_llama_resolve_paths
+  chess_llama_debug model 'checking runtime status' compose "$CHESS_LLAMA_COMPOSE_FILE" endpoint http://127.0.0.1:8080/v1/health
   local container_state=stopped healthy=false model_id='' profile_id=''
-  local ps_output
-  if ! ps_output=$(chess_llama_compose ps --status running --format json llama 2>/dev/null); then
-    container_state=unknown
-  elif [[ -n $ps_output ]]; then
-    container_state=running
-    if curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8080/v1/health >/dev/null 2>&1; then
-      healthy=true
-      local discovery
-      discovery=$(curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8080/v1/models 2>/dev/null) || discovery=''
-      if [[ -n $discovery ]]; then
-        model_id=$(printf '%s' "$discovery" | node --input-type=module -e '
-          let source = ""; for await (const chunk of process.stdin) source += chunk;
-          process.stdout.write(JSON.parse(source).data?.[0]?.id ?? "");
-        ' 2>/dev/null) || model_id=''
-        if [[ -n $model_id ]]; then
-          profile_id=$(chess_llama_runtime_value profile-id-for-file "$model_id" 2>/dev/null) || profile_id=''
+  local ps_output status
+  chess_llama_debug_command model docker compose -f "$CHESS_LLAMA_COMPOSE_FILE" ps --status running --format json llama
+  if ps_output=$(chess_llama_compose ps --status running --format json llama 2>/dev/null); then
+    if [[ -n $ps_output ]]; then
+      container_state=running
+      chess_llama_debug_command model curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8080/v1/health
+      if curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8080/v1/health >/dev/null 2>&1; then
+        healthy=true
+        local discovery
+        chess_llama_debug_command model curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8080/v1/models
+        if discovery=$(curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8080/v1/models 2>/dev/null); then
+          if [[ -n $discovery ]]; then
+            if model_id=$(printf '%s' "$discovery" | node --input-type=module -e '
+              let source = ""; for await (const chunk of process.stdin) source += chunk;
+              process.stdout.write(JSON.parse(source).data?.[0]?.id ?? "");
+            ' 2>/dev/null); then
+              if [[ -n $model_id ]]; then
+                profile_id=$(chess_llama_runtime_value profile-id-for-file "$model_id" 2>/dev/null) || profile_id=''
+              fi
+            else
+              model_id=''
+              chess_llama_warn model 'model discovery response was invalid' endpoint http://127.0.0.1:8080/v1/models
+            fi
+          fi
+        else
+          status=$?
+          chess_llama_warn model 'model discovery probe failed' endpoint http://127.0.0.1:8080/v1/models exitCode "$status"
         fi
+      else
+        status=$?
+        chess_llama_warn model 'runtime health probe failed' endpoint http://127.0.0.1:8080/v1/health exitCode "$status"
       fi
     fi
+  else
+    status=$?
+    container_state=unknown
+    chess_llama_warn model 'container state probe failed' compose "$CHESS_LLAMA_COMPOSE_FILE" exitCode "$status"
   fi
   local output
   output=$(MODEL_STATE=$container_state MODEL_HEALTHY=$healthy MODEL_ID=$model_id MODEL_PROFILE=$profile_id node --input-type=module -e '
@@ -258,6 +348,7 @@ chess_llama_model_logs() {
   temporary=$(mktemp -d "${TMPDIR:-/tmp}/chess-llama-logs.XXXXXX") || return "$CHESS_LLAMA_EXIT_UNEXPECTED"
   stdout_file=$temporary/stdout
   stderr_file=$temporary/stderr
+  chess_llama_debug_command model docker compose -f "$CHESS_LLAMA_COMPOSE_FILE" logs llama
   if chess_llama_compose logs llama >"$stdout_file" 2>"$stderr_file"; then
     status=0
   else
@@ -277,6 +368,9 @@ chess_llama_model_logs() {
   }
   rm -rf -- "$temporary"
   printf '%s\n' "$output"
+  if ((status != 0)); then
+    chess_llama_error model 'container logs failed' exitCode "$status"
+  fi
   return "$status"
 }
 
@@ -314,12 +408,18 @@ chess_llama_model_benchmark() {
   fi
 
   local entry=${CHESS_LLAMA_BENCHMARK_ENTRY:-$CHESS_LLAMA_PROJECT_ROOT/apps/operations/dist/benchmark.js}
-  chess_llama_require_operations_entry "$entry" || return
+  chess_llama_require_operations_entry "$entry" model || return
   chess_llama_resolve_paths
   export CHESS_LLAMA_PROJECT_ROOT
   export CHESS_LLAMA_RUNTIME_MANIFEST=$CHESS_LLAMA_PROJECT_ROOT/config/runtime-manifest.json
   local report
-  report=$(node "$entry" run "${profiles[@]}") || return $?
+  chess_llama_debug model 'running benchmark' entry "$entry" profiles "${profiles[*]:-all}" format "$format"
+  chess_llama_debug_command model node "$entry" run "${profiles[@]}"
+  report=$(node "$entry" run "${profiles[@]}") || {
+    local status=$?
+    chess_llama_error model 'benchmark execution failed' entry "$entry" exitCode "$status"
+    return "$status"
+  }
   if [[ $format == json ]]; then
     printf '%s\n' "$report"
   else
@@ -328,7 +428,7 @@ chess_llama_model_benchmark() {
     chess_llama_render_json human "$rows"
   fi
   if [[ $report != *'"qualified":true'* ]]; then
-    printf 'Benchmark qualification failed\n' >&2
+    chess_llama_error model 'benchmark qualification failed'
     return "$CHESS_LLAMA_EXIT_UNEXPECTED"
   fi
 }
