@@ -16,10 +16,10 @@
     "test:e2e": "playwright test",
     "test:watch": "vitest",
     "lint": "eslint .",
-    "lint:shell": "docker run --rm -v \"$PWD:/mnt\" -w /mnt koalaman/shellcheck@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d chess-llama scripts/cli/*.sh",
+    "lint:shell": "docker run --rm -v \"$PWD:/mnt\" -w /mnt koalaman/shellcheck@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d chess-llama scripts/cli/*.sh tests/shell/*.bash tests/shell/*.bats",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "format:shell:check": "docker run --rm -v \"$PWD:/mnt\" -w /mnt mvdan/shfmt@sha256:f22f3936140be1ba02d493b5d2b91d0e8b4af93fd903e7f46c477822bca4a3be -d -i 2 -ci chess-llama scripts/cli",
+    "format:shell:check": "docker run --rm -v \"$PWD:/mnt\" -w /mnt mvdan/shfmt@sha256:f22f3936140be1ba02d493b5d2b91d0e8b4af93fd903e7f46c477822bca4a3be -d -i 2 -ci chess-llama scripts/cli tests/shell",
     "notices": "node --import tsx scripts/generate-third-party-notices.mts"
   },
   "devDependencies": {
