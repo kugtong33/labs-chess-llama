@@ -10,6 +10,20 @@ React client (5173) -> Fastify gateway (3001) -> SQLite
 
 The gateway owns chess rules, turn serialization, validation, and persistence. Games and settings survive restarts in SQLite. Browser, gateway, and model ports bind to `127.0.0.1` only.
 
+## Student decision tracing
+
+The play screen includes a five-stage Decision pipeline: request, gateway,
+Stockfish, llama, and saved decision. It streams curated teaching evidence and
+falls back to persisted decisions after refresh or when tracing is unavailable.
+It never renders raw prompts, raw UCI traffic, provider bodies, secrets, or
+private reasoning.
+
+`./chess-llama dev` enables tracing unless `CHESS_LLAMA_DEMO_TRACE=0`.
+Direct gateway starts are disabled until `CHESS_LLAMA_DEMO_TRACE=1` or `true`.
+Use `./chess-llama logs follow` (optionally `--layer stockfish|llama`,
+`--game UUID`, or `--format json`) for the terminal view. `model logs` is
+separate raw llama.cpp operational output and is not browser teaching data.
+
 ## Requirements
 
 - Native Linux or WSL2 on Windows

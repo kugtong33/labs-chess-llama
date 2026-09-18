@@ -29,6 +29,46 @@ function jsonResponse(
 }
 
 describe('GatewayClient', () => {
+  it('gets ordered persisted AI decisions from the game history endpoint', async () => {
+    const decisions = [
+      {
+        id: '44444444-4444-4444-8444-444444444444',
+        moveId: '55555555-5555-4555-8555-555555555555',
+        candidates: [
+          {
+            rank: 1,
+            uci: 'e7e5',
+            san: 'e5',
+            score: { type: 'cp', value: 24 },
+            normalizedScore: 24,
+          },
+        ],
+        chosenUci: 'e7e5',
+        commentary: 'Develops.',
+        modelId: 'qwen3',
+        profileId: 'qwen3',
+        quantization: 'Q4_K_M',
+        latencyMs: 42,
+        promptTokens: 10,
+        completionTokens: 4,
+        tokensPerSecond: 20,
+        retryCount: 0,
+        createdAt: '2026-09-18T00:00:00.000Z',
+      },
+    ];
+    const client = new GatewayClient('http://127.0.0.1:3001', (input) => {
+      expect(String(input)).toBe(
+        `http://127.0.0.1:3001/api/games/${game.id}/decisions`,
+      );
+      return Promise.resolve(jsonResponse(decisions));
+    });
+
+    await expect(client.getDecisions(game.id)).resolves.toEqual(decisions);
+    expect(client.decisionEventsUrl(game.id)).toBe(
+      `http://127.0.0.1:3001/api/demo/events?gameId=${game.id}`,
+    );
+  });
+
   it('invokes the default browser fetch with the global receiver', async () => {
     let usedGlobalReceiver = false;
     vi.stubGlobal('fetch', function (this: unknown) {

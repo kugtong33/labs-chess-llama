@@ -7,11 +7,14 @@ import { GatewayProblemError } from '../api/client.js';
 import {
   gatewayKeys,
   useGame,
+  useDecisions,
   useGateway,
   useHealth,
   useSettings,
 } from '../api/queries.js';
 import { AiCommentary } from '../components/ai-commentary.js';
+import { DecisionPipeline } from '../components/decision-pipeline.js';
+import { useDecisionEvents } from '../api/decision-events.js';
 import { GameActions } from '../components/game-actions.js';
 import { GameBoard } from '../components/game-board.js';
 import { MoveList } from '../components/move-list.js';
@@ -24,11 +27,19 @@ export function PlayRoute() {
   const health = useHealth();
   const settings = useSettings();
   const gameQuery = useGame(id);
+  const decisionsQuery = useDecisions(id);
+  const decisionEvents = useDecisionEvents(
+    id ? gateway.decisionEventsUrl(id) : '',
+    { enabled: id.length > 0 },
+  );
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const abortable = useAbortScope();
   const [failure, setFailure] = useState<unknown>();
   const [announcement, setAnnouncement] = useState('');
+  const [selectedDecisionId, setSelectedDecisionId] = useState<string | null>(
+    null,
+  );
   const modelStatus = health.data?.components.model.status;
   const modelReady = modelStatus === 'ready';
 
@@ -37,6 +48,10 @@ export function PlayRoute() {
     queryClient.setQueryData(gatewayKeys.game(next.id), next);
     void queryClient.invalidateQueries({
       queryKey: gatewayKeys.games(),
+      exact: true,
+    });
+    void queryClient.invalidateQueries({
+      queryKey: gatewayKeys.decisions(next.id),
       exact: true,
     });
   };
@@ -173,6 +188,12 @@ export function PlayRoute() {
   }
 
   const current = gameQuery.data;
+  const decisions =
+    decisionsQuery.data ??
+    (current.lastAiDecision ? [current.lastAiDecision] : []);
+  const selectedDecision =
+    decisions.find((decision) => decision.id === selectedDecisionId) ??
+    current.lastAiDecision;
   const runtimeModel = health.data?.components.model;
   const pending = [create, humanMove, retryAi, resign, download].some(
     (mutation) => mutation.isPending,
@@ -236,10 +257,25 @@ export function PlayRoute() {
         />
         <div className="game-sidebar">
           <AiCommentary
-            decision={current.lastAiDecision}
+            decision={selectedDecision}
             backend={runtimeModel?.backend}
           />
-          <MoveList moves={current.moves} />
+          <DecisionPipeline
+            events={decisionEvents.events}
+            decision={selectedDecision}
+            connection={decisionEvents.connection}
+          />
+          <MoveList
+            moves={current.moves}
+            decisions={decisions}
+            selectedDecisionId={selectedDecision?.id}
+            onSelectDecision={(decision) => {
+              setSelectedDecisionId(decision.id);
+              setAnnouncement(
+                `Showing AI decision for move ${decision.chosenUci}.`,
+              );
+            }}
+          />
         </div>
       </div>
       <GameActions

@@ -21,6 +21,7 @@ export const gatewayKeys = {
   health: () => [...gatewayKeys.all, 'health'] as const,
   games: () => [...gatewayKeys.all, 'games'] as const,
   game: (id: string) => [...gatewayKeys.games(), id] as const,
+  decisions: (id: string) => [...gatewayKeys.game(id), 'decisions'] as const,
   settings: () => [...gatewayKeys.all, 'settings'] as const,
 };
 
@@ -88,6 +89,15 @@ export function useGame(id: string) {
   return useQuery({
     queryKey: gatewayKeys.game(id),
     queryFn: ({ signal }) => gateway.getGame(id, signal),
+    enabled: id.length > 0,
+  });
+}
+
+export function useDecisions(id: string) {
+  const gateway = useGateway();
+  return useQuery({
+    queryKey: gatewayKeys.decisions(id),
+    queryFn: ({ signal }) => gateway.getDecisions(id, signal),
     enabled: id.length > 0,
   });
 }

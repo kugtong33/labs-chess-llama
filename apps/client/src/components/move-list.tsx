@@ -1,6 +1,16 @@
-import type { MoveView } from '@chess-llama/contracts';
+import type { AiDecisionView, MoveView } from '@chess-llama/contracts';
 
-export function MoveList({ moves }: { moves: MoveView[] }) {
+export function MoveList({
+  moves,
+  decisions = [],
+  selectedDecisionId,
+  onSelectDecision,
+}: {
+  moves: MoveView[];
+  decisions?: AiDecisionView[];
+  selectedDecisionId?: string | null;
+  onSelectDecision?: (decision: AiDecisionView) => void;
+}) {
   const rows = Array.from(
     { length: Math.ceil(moves.length / 2) },
     (_, index) => ({
@@ -24,11 +34,41 @@ export function MoveList({ moves }: { moves: MoveView[] }) {
             <li key={row.number}>
               <span>{row.number}.</span>
               <strong>{row.white?.san ?? '…'}</strong>
-              <strong>{row.black?.san ?? '…'}</strong>
+              {moveCell(
+                row.black,
+                decisions,
+                selectedDecisionId,
+                onSelectDecision,
+              )}
             </li>
           ))}
         </ol>
       )}
     </section>
+  );
+}
+
+function moveCell(
+  move: MoveView | undefined,
+  decisions: AiDecisionView[],
+  selectedDecisionId: string | null | undefined,
+  onSelectDecision: ((decision: AiDecisionView) => void) | undefined,
+) {
+  if (!move) return <strong>…</strong>;
+  const decision = decisions.find((item) => item.moveId === move.id);
+  if (!decision || !onSelectDecision) return <strong>{move.san}</strong>;
+  return (
+    <button
+      type="button"
+      className={
+        decision.id === selectedDecisionId
+          ? 'move-choice is-selected'
+          : 'move-choice'
+      }
+      onClick={() => onSelectDecision(decision)}
+      aria-pressed={decision.id === selectedDecisionId}
+    >
+      {move.san}
+    </button>
   );
 }

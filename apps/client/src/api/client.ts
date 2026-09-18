@@ -1,6 +1,7 @@
 import type { z } from 'zod';
 import {
   AiMoveRequestSchema,
+  AiDecisionViewSchema,
   CreateGameRequestSchema,
   GameListResponseSchema,
   GameViewSchema,
@@ -11,6 +12,7 @@ import {
   SubmitMoveRequestSchema,
   UpdateSettingsRequestSchema,
   type AiMoveRequest,
+  type AiDecisionView,
   type CreateGameRequest,
   type GameListResponse,
   type GameView,
@@ -72,6 +74,8 @@ export interface GatewayApi {
   health(signal?: AbortSignal): Promise<HealthResponse>;
   listGames(signal?: AbortSignal): Promise<GameListResponse>;
   getGame(id: string, signal?: AbortSignal): Promise<GameView>;
+  getDecisions(id: string, signal?: AbortSignal): Promise<AiDecisionView[]>;
+  decisionEventsUrl(id: string): string;
   createGame(
     request?: CreateGameRequest,
     signal?: AbortSignal,
@@ -120,6 +124,21 @@ export class GatewayClient implements GatewayApi {
     return this.#json(`/api/games/${encodeURIComponent(id)}`, GameViewSchema, {
       signal,
     });
+  }
+
+  public getDecisions(
+    id: string,
+    signal?: AbortSignal,
+  ): Promise<AiDecisionView[]> {
+    return this.#json(
+      `/api/games/${encodeURIComponent(id)}/decisions`,
+      AiDecisionViewSchema.array(),
+      { signal },
+    );
+  }
+
+  public decisionEventsUrl(id: string): string {
+    return `${this.#baseUrl}/api/demo/events?gameId=${encodeURIComponent(id)}`;
   }
 
   public createGame(

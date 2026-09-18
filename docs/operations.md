@@ -63,6 +63,22 @@ CHESS_LLAMA_LOG_LEVEL=debug ./chess-llama doctor --format json
 
 Log markers use color only when standard error is an eligible terminal. Set `NO_COLOR` or `TERM=dumb`, or redirect standard error, for plain text. The CLI does not persist or rotate lifecycle logs; native Vite, Node, Docker, and curl streams remain unchanged.
 
+## Decision-trace teaching view
+
+The browser Decision pipeline presents a correlated five-layer AI turn:
+request, gateway, Stockfish, llama, and persistence. It shows only curated
+candidate, retry, selection, commentary, and metric data; it never exposes
+prompts, raw UCI traffic, provider response bodies, secrets, database
+contents, or hidden reasoning.
+
+`./chess-llama dev` enables tracing by default; set
+`CHESS_LLAMA_DEMO_TRACE=0` to disable it. Direct gateway processes remain
+disabled unless the variable is `1` or `true`. The browser reconnects using
+native EventSource behavior and falls back to persisted AI decisions when the
+stream is disabled or unavailable. `./chess-llama logs follow` consumes the
+same curated feed; `./chess-llama model logs` remains separate raw
+operational output.
+
 ## Local paths
 
 | Data | Default | Override |

@@ -559,6 +559,101 @@ footer {
   color: var(--muted);
 }
 
+.move-choice {
+  width: 100%;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 0.25rem;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.move-choice.is-selected {
+  color: var(--accent);
+}
+
+.decision-pipeline {
+  min-width: 0;
+}
+
+.pipeline-stages,
+.pipeline-candidates {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pipeline-stages {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.pipeline-stages li,
+.pipeline-candidates li {
+  min-width: 0;
+  padding: 0.45rem;
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+  border-radius: 0.45rem;
+  font-size: 0.72rem;
+}
+
+.pipeline-stages span {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--muted);
+  font-family: ui-monospace, 'Cascadia Code', monospace;
+  font-size: 0.64rem;
+}
+
+.pipeline-stages [data-status='completed'] {
+  color: var(--ready);
+}
+.pipeline-stages [data-status='failed'],
+.pipeline-stages [data-status='cancelled'] {
+  color: var(--danger);
+}
+.pipeline-stages [data-status='running'],
+.pipeline-stages [data-status='retrying'] {
+  color: var(--loading);
+}
+
+.pipeline-candidates li {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.pipeline-candidates .is-chosen {
+  border: 1px solid var(--accent);
+}
+
+.pipeline-candidates em {
+  margin-left: auto;
+  color: var(--accent);
+}
+.pipeline-status {
+  margin: 0.8rem 0 0;
+  font-size: 0.8rem;
+}
+.pipeline-details {
+  margin-top: 0.8rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+.pipeline-details summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+.pipeline-details ul {
+  padding-left: 1.1rem;
+  line-height: 1.55;
+}
+
 .game-actions {
   display: flex;
   flex-wrap: wrap;
@@ -713,6 +808,10 @@ footer {
   .game-grid,
   .settings-form {
     grid-template-columns: 1fr;
+  }
+
+  .pipeline-stages {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .game-card {
