@@ -26,10 +26,7 @@ describe('model benchmark', () => {
   it('validates every representative position FEN', async () => {
     const positions = JSON.parse(
       await readFile(
-        new URL(
-          '../../../tests/fixtures/benchmarks/positions.json',
-          import.meta.url,
-        ),
+        new URL('./benchmark-positions.json', import.meta.url),
         'utf8',
       ),
     ) as PositionFixture[];

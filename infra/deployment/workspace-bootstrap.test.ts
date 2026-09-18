@@ -13,7 +13,7 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 
 import { afterEach, describe, expect, it } from 'vitest';
@@ -144,6 +144,55 @@ function successfulRunner() {
 }
 
 describe('application workspace bootstrap', () => {
+  it('builds the operations package from deployed source without repository test fixtures', async () => {
+    const fixture = await createFixture();
+    const repositoryRoot = resolve(import.meta.dirname, '../..');
+    const result = await bootstrapWorkspace({
+      environment: {
+        ...fixture.environment,
+        SOURCE_DIRECTORY: repositoryRoot,
+      },
+      runCommand: async (command, arguments_, options) => {
+        if (command !== 'corepack') throw new Error('Unexpected executable');
+        if (arguments_[0] === 'enable') return;
+        if (arguments_.join(' ') === 'pnpm install --frozen-lockfile') {
+          // Reuse installed dependencies; keep source resolution in the real snapshot.
+          await symlink(
+            join(repositoryRoot, 'node_modules'),
+            join(options.cwd, 'node_modules'),
+          );
+          return;
+        }
+        if (arguments_.join(' ') !== 'pnpm run build') {
+          throw new Error('Unexpected package command');
+        }
+        const packageDirectory = join(options.cwd, 'apps/operations');
+        const manifest = JSON.parse(
+          await readFile(join(packageDirectory, 'package.json'), 'utf8'),
+        ) as { scripts: { build: string } };
+        await executeFile('/bin/sh', ['-c', manifest.scripts.build], {
+          cwd: packageDirectory,
+          env: {
+            ...process.env,
+            PATH: [
+              join(repositoryRoot, 'node_modules/.bin'),
+              process.env.PATH,
+            ].join(delimiter),
+          },
+        });
+      },
+    });
+
+    await expect(
+      access(join(result.releaseDirectory, 'tests')),
+    ).rejects.toThrow();
+    await expect(
+      access(
+        join(result.releaseDirectory, 'apps/operations/dist/benchmark.js'),
+      ),
+    ).resolves.toBeUndefined();
+  });
+
   it('makes pnpm available to child build scripts when only Corepack is on PATH', async () => {
     const fixture = await createFixture();
     const binDirectory = join(fixture.sourceDirectory, 'fixture-bin');

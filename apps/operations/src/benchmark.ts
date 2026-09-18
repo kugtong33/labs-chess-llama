@@ -12,7 +12,7 @@ import { legalMoves, reconstructGame } from '@chess-llama/chess-domain';
 import { LlamaCppClient } from '@chess-llama/llama-protocol';
 import { StockfishJsAnalyzer } from '@chess-llama/stockfish-adapter';
 import type { RuntimeManifest, RuntimeProfile } from '@chess-llama/contracts';
-import benchmarkFixtureData from '../../../tests/fixtures/benchmarks/positions.json' with { type: 'json' };
+import benchmarkFixtureData from './benchmark-positions.json' with { type: 'json' };
 import { loadRuntimeManifest } from './runtime-manifest.js';
 
 const execFileAsync = promisify(execFile);
