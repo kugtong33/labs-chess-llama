@@ -1,5 +1,8 @@
 import { execFile, spawnSync } from 'node:child_process';
 import {
+  access,
+  copyFile,
+  cp,
   mkdir,
   mkdtemp,
   open,
@@ -9,7 +12,7 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 
@@ -20,6 +23,45 @@ const gatewayRoot = resolve(import.meta.dirname, '..');
 const repositoryRoot = resolve(gatewayRoot, '../..');
 let fixtureRoot: string;
 let builtDirectory: string;
+let fixtureGatewayRoot: string;
+const fixturePackages = [
+  'packages/contracts',
+  'packages/chess-domain',
+  'packages/llama-protocol',
+  'packages/stockfish-adapter',
+  'packages/storage',
+  'apps/gateway',
+];
+
+async function copyFixturePackage(directory: string) {
+  const source = join(repositoryRoot, directory);
+  const destination = join(fixtureRoot, directory);
+  await mkdir(destination, { recursive: true });
+  await cp(join(source, 'src'), join(destination, 'src'), { recursive: true });
+  await copyFile(
+    join(source, 'package.json'),
+    join(destination, 'package.json'),
+  );
+  await copyFile(
+    join(source, 'tsconfig.json'),
+    join(destination, 'tsconfig.json'),
+  );
+  const manifest = JSON.parse(
+    await readFile(join(source, 'package.json'), 'utf8'),
+  ) as {
+    dependencies: Record<string, string>;
+  };
+  for (const [name, version] of Object.entries(manifest.dependencies)) {
+    const link = join(destination, 'node_modules', name);
+    await mkdir(dirname(link), { recursive: true });
+    await symlink(
+      version.startsWith('workspace:')
+        ? join(fixtureRoot, 'packages', name.replace('@chess-llama/', ''))
+        : join(source, 'node_modules', name),
+      link,
+    );
+  }
+}
 
 async function runEntry(arguments_: string[], input = '') {
   const directory = await mkdtemp(join(fixtureRoot, 'invocation-'));
@@ -31,7 +73,7 @@ async function runEntry(arguments_: string[], input = '') {
     // File descriptors also capture Node diagnostics in restricted sandboxes
     // where asynchronous child-process pipe writes can be unavailable.
     const result = spawnSync(process.execPath, arguments_, {
-      cwd: gatewayRoot,
+      cwd: fixtureGatewayRoot,
       env: { PATH: process.env.PATH },
       stdio: [stdin.fd, stdout.fd, stderr.fd],
       timeout: 10_000,
@@ -51,28 +93,38 @@ beforeAll(async () => {
   fixtureRoot = await mkdtemp(
     join(tmpdir(), 'chess-llama-gateway-entrypoint-'),
   );
-  builtDirectory = join(fixtureRoot, 'releases/build');
-  await mkdir(builtDirectory, { recursive: true });
+  fixtureGatewayRoot = join(fixtureRoot, 'apps/gateway');
+  builtDirectory = join(fixtureGatewayRoot, 'dist');
   await writeFile(join(fixtureRoot, 'package.json'), '{"type":"module"}');
+  await copyFile(
+    join(repositoryRoot, 'tsconfig.base.json'),
+    join(fixtureRoot, 'tsconfig.base.json'),
+  );
+  await Promise.all(fixturePackages.map(copyFixturePackage));
   await symlink(
-    join(gatewayRoot, 'node_modules'),
-    join(fixtureRoot, 'node_modules'),
+    join(fixtureGatewayRoot, 'src'),
+    join(fixtureRoot, 'source-current'),
   );
-  await symlink(import.meta.dirname, join(fixtureRoot, 'source-current'));
-  await symlink('releases/build', join(fixtureRoot, 'current'));
-  await executeFile(
-    process.execPath,
-    [
-      join(repositoryRoot, 'node_modules/tsup/dist/cli-default.js'),
-      'src/main.ts',
-      '--format',
-      'esm',
-      '--out-dir',
-      builtDirectory,
-    ],
-    { cwd: gatewayRoot },
-  );
-});
+  await symlink('apps/gateway/dist', join(fixtureRoot, 'current'));
+  // Every workspace package starts without dist, even in a previously built checkout.
+  // Build fixture artifacts only; external installed packages can be shared safely.
+  for (const directory of fixturePackages) {
+    const packageRoot = join(fixtureRoot, directory);
+    await expect(access(join(packageRoot, 'dist'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    await executeFile(
+      process.execPath,
+      [
+        join(repositoryRoot, 'node_modules/tsup/dist/cli-default.js'),
+        directory === 'apps/gateway' ? 'src/main.ts' : 'src/index.ts',
+        '--format',
+        'esm',
+      ],
+      { cwd: packageRoot },
+    );
+  }
+}, 30_000);
 
 afterAll(async () => {
   if (fixtureRoot) await rm(fixtureRoot, { recursive: true, force: true });
@@ -82,9 +134,14 @@ describe.each(['source', 'built'] as const)('%s gateway entrypoint', (kind) => {
   function paths() {
     return kind === 'source'
       ? {
-          direct: join(import.meta.dirname, 'main.ts'),
+          direct: join(fixtureGatewayRoot, 'src/main.ts'),
           linked: join(fixtureRoot, 'source-current/main.ts'),
-          loader: ['--import', 'tsx'],
+          loader: [
+            '--import',
+            pathToFileURL(
+              join(repositoryRoot, 'node_modules/tsx/dist/loader.mjs'),
+            ).href,
+          ],
         }
       : {
           direct: join(builtDirectory, 'main.js'),
