@@ -11,7 +11,7 @@ import {
   rm,
   symlink,
 } from 'node:fs/promises';
-import { dirname, join, relative, resolve } from 'node:path';
+import { delimiter, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /* global process */
@@ -37,7 +37,7 @@ const IGNORED_DIRECTORIES = new Set([
 
 /**
  * @typedef {{ absolutePath: string, relativePath: string }} SourceFile
- * @typedef {(command: string, arguments_: string[], options: { cwd: string }) => Promise<void>} CommandRunner
+ * @typedef {(command: string, arguments_: string[], options: { cwd: string, env: Record<string, string | undefined> }) => Promise<void>} CommandRunner
  */
 
 /**
@@ -78,12 +78,29 @@ export async function bootstrapWorkspace({
   try {
     await copySourceFiles(sourceFiles, partialDirectory);
     await readPackageManager(partialDirectory);
-    await runCommand('corepack', ['pnpm', 'install', '--frozen-lockfile'], {
+    const shimDirectory = join(workspaceDirectory, '.bin');
+    await mkdir(shimDirectory, { recursive: true });
+    const commandOptions = {
       cwd: partialDirectory,
-    });
-    await runCommand('corepack', ['pnpm', 'run', 'build'], {
-      cwd: partialDirectory,
-    });
+      env: {
+        ...process.env,
+        ...environment,
+        PATH: [shimDirectory, environment.PATH ?? process.env.PATH]
+          .filter(Boolean)
+          .join(delimiter),
+      },
+    };
+    await runCommand(
+      'corepack',
+      ['enable', '--install-directory', shimDirectory, 'pnpm'],
+      commandOptions,
+    );
+    await runCommand(
+      'corepack',
+      ['pnpm', 'install', '--frozen-lockfile'],
+      commandOptions,
+    );
+    await runCommand('corepack', ['pnpm', 'run', 'build'], commandOptions);
 
     await promoteRelease(partialDirectory, releaseDirectory);
     await activateRelease(workspaceDirectory, sourceHash);
@@ -276,9 +293,9 @@ async function removeOldReleases(releasesDirectory, activeReleaseName) {
 }
 
 /** @type {CommandRunner} */
-function runProcess(command, arguments_, { cwd }) {
+function runProcess(command, arguments_, { cwd, env }) {
   return new Promise((resolvePromise, reject) => {
-    const child = spawn(command, arguments_, { cwd, stdio: 'inherit' });
+    const child = spawn(command, arguments_, { cwd, env, stdio: 'inherit' });
     child.once('error', reject);
     child.once('exit', (code, signal) => {
       if (code === 0) resolvePromise();
