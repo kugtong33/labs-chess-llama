@@ -259,6 +259,27 @@ describe('application workspace bootstrap', () => {
     expect((await stat(fixture.databaseDirectory)).mode & 0o777).toBe(0o777);
   });
 
+  it('reuses the completed hash-named release when unchanged source is bootstrapped twice', async () => {
+    const fixture = await createFixture();
+
+    const first = await bootstrapWorkspace({
+      environment: fixture.environment,
+      runCommand: successfulRunner(),
+    });
+    const second = await bootstrapWorkspace({
+      environment: fixture.environment,
+      runCommand: successfulRunner(),
+    });
+
+    expect(second.sourceHash).toBe(first.sourceHash);
+    await expect(
+      readlink(join(fixture.workspaceDirectory, 'current')),
+    ).resolves.toBe(`releases/${first.sourceHash}`);
+    await expect(
+      access(join(fixture.workspaceDirectory, 'releases', first.sourceHash)),
+    ).resolves.toBeUndefined();
+  });
+
   it('preserves the previous active release when the build fails', async () => {
     const fixture = await createFixture();
     const oldRelease = join(

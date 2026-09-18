@@ -229,15 +229,20 @@ async function promoteRelease(partialDirectory, releaseDirectory) {
   try {
     await rename(partialDirectory, releaseDirectory);
   } catch (error) {
-    if (!(
-      error instanceof Error &&
-      'code' in error &&
-      error.code === 'EEXIST'
-    )) {
+    if (!isExistingRelease(error)) {
       throw error;
     }
     await rm(partialDirectory, { recursive: true, force: true });
   }
+}
+
+/** @param {unknown} error */
+function isExistingRelease(error) {
+  return (
+    error instanceof Error &&
+    'code' in error &&
+    (error.code === 'EEXIST' || error.code === 'ENOTEMPTY')
+  );
 }
 
 /** @param {string} workspaceDirectory @param {string} releaseName */
