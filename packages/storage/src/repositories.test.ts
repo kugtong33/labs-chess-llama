@@ -246,6 +246,32 @@ describe('SQLite repositories', () => {
     );
   });
 
+  it('lists AI decisions in associated move-ply order', () => {
+    const harness = newHarness();
+    const game = harness.games.create({
+      humanColor: 'white',
+      modelProfileId: 'qwen3-4b-q4-k-m',
+    });
+    harness.games.recordHumanMove(game.id, humanMove());
+    const firstMove = aiMove();
+    const firstDecision = aiDecision(firstMove.id);
+    harness.games.recordAiMove(game.id, firstMove, {
+      ...firstDecision,
+      createdAt: 2_000,
+    });
+    const secondMove = { ...aiMove(), ply: 3, pgnAfter: '1. e4 e5 2. e5' };
+    const secondDecision = aiDecision(secondMove.id);
+    harness.games.recordAiMove(game.id, secondMove, {
+      ...secondDecision,
+      createdAt: 1_000,
+    });
+
+    expect(harness.games.listAiDecisions(game.id).map(({ id }) => id)).toEqual([
+      firstDecision.id,
+      secondDecision.id,
+    ]);
+  });
+
   it('keeps migration idempotent and reports a current migration', () => {
     const harness = newHarness();
     expect(() => migrateDatabase(harness.db)).not.toThrow();

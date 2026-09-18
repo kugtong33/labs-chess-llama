@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   AiMoveRequestSchema,
   CreateGameRequestSchema,
+  DecisionTraceEventSchema,
   GameViewSchema,
   SettingsSchema,
   SubmitMoveRequestSchema,
@@ -41,6 +42,93 @@ describe('public contracts', () => {
   it('requires authoritative game fields', () => {
     expect(() =>
       GameViewSchema.parse({ id: 'game-1', status: 'active' }),
+    ).toThrow();
+  });
+
+  it('accepts a strict, versioned llama retry trace event', () => {
+    const event = {
+      schemaVersion: 1,
+      id: '6d217b17-109c-45a4-97c4-f190adad90ce',
+      sequence: 0,
+      timestamp: '2026-09-18T00:00:00.000Z',
+      traceId: 'd722a68e-97c5-43d8-b0ca-1ba91ba3392f',
+      requestId: 'req-42',
+      gameId: '8fdbe143-cb5b-465d-90e9-70e5a7d19a44',
+      ply: 2,
+      layer: 'llama',
+      stage: 'retry_scheduled',
+      status: 'retrying',
+      summary: 'Retrying model selection after a timeout.',
+      data: { attempt: 1, reason: 'timeout' },
+    };
+
+    expect(DecisionTraceEventSchema.parse(event)).toEqual(event);
+  });
+
+  it.each([
+    ['client', 'move_submitted', 'completed', {}],
+    ['gateway', 'ai_turn_started', 'running', {}],
+    [
+      'stockfish',
+      'analysis_started',
+      'running',
+      { candidateLimit: 5, moveTimeMs: 100 },
+    ],
+    ['llama', 'attempt_started', 'running', { attempt: 0 }],
+    [
+      'storage',
+      'decision_persisted',
+      'completed',
+      { decisionId: 'aaf18ea8-7ece-4999-95ce-319e3a75e920' },
+    ],
+  ] as const)(
+    'accepts the curated %s layer variant',
+    (layer, stage, status, data) => {
+      expect(
+        DecisionTraceEventSchema.parse({
+          schemaVersion: 1,
+          id: '6d217b17-109c-45a4-97c4-f190adad90ce',
+          sequence: 0,
+          timestamp: '2026-09-18T00:00:00.000Z',
+          traceId: 'd722a68e-97c5-43d8-b0ca-1ba91ba3392f',
+          requestId: 'req-42',
+          gameId: null,
+          ply: null,
+          layer,
+          stage,
+          status,
+          summary: 'Curated trace summary.',
+          data,
+        }),
+      ).toMatchObject({ layer, stage, status, data });
+    },
+  );
+
+  it('rejects trace fields and stage data outside the curated contract', () => {
+    const event = {
+      schemaVersion: 1,
+      id: '6d217b17-109c-45a4-97c4-f190adad90ce',
+      sequence: 0,
+      timestamp: '2026-09-18T00:00:00.000Z',
+      traceId: 'd722a68e-97c5-43d8-b0ca-1ba91ba3392f',
+      requestId: 'req-42',
+      gameId: null,
+      ply: null,
+      layer: 'llama',
+      stage: 'attempt_started',
+      status: 'running',
+      summary: 'Requesting a model selection.',
+      data: { attempt: 0 },
+    };
+
+    expect(() =>
+      DecisionTraceEventSchema.parse({
+        ...event,
+        data: { attempt: 0, prompt: 'never expose this' },
+      }),
+    ).toThrow();
+    expect(() =>
+      DecisionTraceEventSchema.parse({ ...event, rawResponse: '{}' }),
     ).toThrow();
   });
 });

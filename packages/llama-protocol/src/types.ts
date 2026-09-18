@@ -6,6 +6,13 @@ export interface MoveCandidate {
   san: string;
 }
 
+export type LlamaRetryReason =
+  'timeout' | 'http' | 'invalid_completion' | 'transport';
+
+export type SelectMoveProgressEvent =
+  | { type: 'attempt_started'; attempt: 0 | 1 }
+  | { type: 'retry_scheduled'; attempt: 1; reason: LlamaRetryReason };
+
 export interface SelectMoveRequest {
   fen: string;
   sanHistory: readonly string[];
@@ -13,6 +20,7 @@ export interface SelectMoveRequest {
   commentaryStyle: CommentaryStyle;
   modelProfileId: string;
   signal?: AbortSignal;
+  onProgress?: (event: SelectMoveProgressEvent) => void;
 }
 
 export interface InferenceMetrics {

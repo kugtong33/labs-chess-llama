@@ -28,6 +28,7 @@ export interface GameRepository {
   get(id: string): GameAggregate | null;
   getRequired(id: string): GameAggregate;
   list(): GameAggregate[];
+  listAiDecisions(gameId: string): StoredAiDecision[];
   recordHumanMove(
     gameId: string,
     move: PersistableMove,
@@ -166,6 +167,20 @@ export function createGameRepository(db: SqliteDatabase): GameRepository {
           .prepare('SELECT * FROM games ORDER BY updated_at DESC')
           .all() as GameRow[]
       ).map(readAggregate);
+    },
+
+    listAiDecisions(gameId) {
+      return (
+        db
+          .prepare(
+            `SELECT ai.*
+             FROM ai_decisions ai
+             JOIN moves m ON m.id = ai.move_id
+             WHERE ai.game_id = ?
+             ORDER BY m.ply ASC, ai.id ASC`,
+          )
+          .all(gameId) as DecisionRow[]
+      ).map(readDecision);
     },
 
     recordHumanMove(gameId, move, result) {

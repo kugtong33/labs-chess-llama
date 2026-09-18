@@ -175,6 +175,42 @@ describe('llama.cpp HTTP boundary', () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
+  it.each([
+    ['timeout', () => new Promise<Response>(() => undefined)],
+    [
+      'http',
+      () => Promise.resolve(new Response('provider body', { status: 503 })),
+    ],
+    ['invalid_completion', () => Promise.resolve(completion('{not json'))],
+    ['transport', () => Promise.reject(new Error('provider body'))],
+  ] as const)(
+    'reports sanitized %s retry progress without provider bodies',
+    async (reason, firstAttempt) => {
+      const fetcher = vi
+        .fn<typeof fetch>()
+        .mockImplementationOnce(firstAttempt)
+        .mockResolvedValueOnce(
+          completion(JSON.stringify({ move: 'e7e5', commentary: 'Develops.' })),
+        );
+      const progress: unknown[] = [];
+      const client = new LlamaCppClient({ fetch: fetcher, timeoutMs: 1 });
+
+      await expect(
+        client.selectMove({
+          ...request,
+          onProgress: (event) => progress.push(event),
+        }),
+      ).resolves.toMatchObject({ retryCount: 1 });
+
+      expect(progress).toEqual([
+        { type: 'attempt_started', attempt: 0 },
+        { type: 'retry_scheduled', attempt: 1, reason },
+        { type: 'attempt_started', attempt: 1 },
+      ]);
+      expect(JSON.stringify(progress)).not.toContain('provider body');
+    },
+  );
+
   it('retries a network timeout once and then surfaces the timeout', async () => {
     const fetcher = vi
       .fn<typeof fetch>()

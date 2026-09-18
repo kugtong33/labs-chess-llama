@@ -2,10 +2,12 @@ import { buildPrompt, buildSystemPrompt } from './prompt.js';
 import { buildMoveResponseFormat } from './schema.js';
 import type {
   LlamaCppClientOptions,
+  LlamaRetryReason,
   ModelHealth,
   MoveSelection,
   MoveSelector,
   SelectMoveRequest,
+  SelectMoveProgressEvent,
 } from './types.js';
 
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
@@ -102,11 +104,22 @@ export class LlamaCppClient implements MoveSelector {
 
     const body = this.buildRequestBody(request);
     for (let attempt = 0; attempt < 2; attempt += 1) {
+      notifyProgress(request, {
+        type: 'attempt_started',
+        attempt: attempt === 0 ? 0 : 1,
+      });
       try {
         return await this.selectOnce(request, body, attempt === 0 ? 0 : 1);
       } catch (error) {
         if (isAbortError(error, request.signal)) throw toAbortError();
-        if (attempt === 0 && shouldRetry(error)) continue;
+        if (attempt === 0 && shouldRetry(error)) {
+          notifyProgress(request, {
+            type: 'retry_scheduled',
+            attempt: 1,
+            reason: retryReason(error),
+          });
+          continue;
+        }
         throw error;
       }
     }
@@ -328,4 +341,22 @@ function shouldRetry(error: unknown): boolean {
   }
   if (error instanceof HttpError) return RETRYABLE_STATUS.has(error.status);
   return error instanceof Error;
+}
+
+function retryReason(error: unknown): LlamaRetryReason {
+  if (error instanceof TimeoutError) return 'timeout';
+  if (error instanceof HttpError) return 'http';
+  if (error instanceof InvalidCompletionError) return 'invalid_completion';
+  return 'transport';
+}
+
+function notifyProgress(
+  request: SelectMoveRequest,
+  event: SelectMoveProgressEvent,
+): void {
+  try {
+    request.onProgress?.(event);
+  } catch {
+    // Observers are diagnostic only and cannot change move selection.
+  }
 }
