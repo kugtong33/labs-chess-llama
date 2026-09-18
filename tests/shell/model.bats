@@ -177,6 +177,44 @@ EOF
   assert_stderr_contains "[OK] model: runtime stopped"
 }
 
+@test "model stop resolves the active model environment required by Compose" {
+  local runtime_entry=$TEST_ROOT/runtime.js
+  export CHESS_LLAMA_RUNTIME_ENTRY=$runtime_entry
+  export CHESS_LLAMA_DATABASE_ENTRY=$TEST_ROOT/missing-database.js
+  export CHESS_LLAMA_MODEL_DIR=$TEST_ROOT/models
+  export CHESS_LLAMA_TEST_TRACE=$TEST_ROOT/trace
+  printf 'placeholder\n' >"$runtime_entry"
+  make_tool node <<'EOF'
+case "$2" in
+  default-profile) printf 'test-profile\n' ;;
+  profile) printf '{}\n' ;;
+  image) printf 'example.invalid/llama@sha256:%064d\n' 0 ;;
+  profile-field)
+    case "$4" in
+      file) printf 'test-model.gguf\n' ;;
+    esac
+    ;;
+esac
+EOF
+  make_tool docker <<'EOF'
+if [[ -z ${CHESS_LLAMA_IMAGE:-} || -z ${CHESS_LLAMA_MODEL_FILE:-} ]]; then
+  printf 'Compose model environment is missing\n' >&2
+  exit 99
+fi
+printf 'image=%s file=%s modelDir=%s\n' \
+  "$CHESS_LLAMA_IMAGE" "$CHESS_LLAMA_MODEL_FILE" "$CHESS_LLAMA_MODEL_DIR" \
+  >"$CHESS_LLAMA_TEST_TRACE"
+EOF
+
+  run --separate-stderr "$PROJECT_ROOT/chess-llama" model stop
+
+  [ "$status" -eq 0 ]
+  assert_trace_contains 'image=example.invalid/llama@sha256:'
+  assert_trace_contains 'file=test-model.gguf'
+  assert_trace_contains "modelDir=$CHESS_LLAMA_MODEL_DIR"
+  assert_stderr_contains "[OK] model: runtime stopped"
+}
+
 @test "model logs use the established JSON result envelope" {
   make_tool docker <<'EOF'
 printf 'llama ready\n'

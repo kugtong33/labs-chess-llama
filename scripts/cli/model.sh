@@ -283,7 +283,9 @@ chess_llama_model_stop() {
     chess_llama_input_error "Unknown option: $1"
     return
   }
-  chess_llama_resolve_paths
+  chess_llama_select_profile || return
+  local profile=$CHESS_LLAMA_SELECTED_PROFILE
+  chess_llama_model_environment "$profile" || return
   chess_llama_model_lock || return
   local container=chess-llama-model
   chess_llama_info model 'stopping runtime' container "$container" compose "$CHESS_LLAMA_COMPOSE_FILE"

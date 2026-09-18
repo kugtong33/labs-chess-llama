@@ -84,7 +84,11 @@ chess_llama_dev_main() {
   if [[ $model_status != *'"healthy":true'* ]]; then
     CHESS_LLAMA_DEV_MODEL_OWNED=true
     chess_llama_info dev 'starting model runtime' url http://127.0.0.1:8080
-    chess_llama_model_start || return $?
+    if (chess_llama_model_start); then
+      :
+    else
+      return $?
+    fi
   else
     model_profile=$(printf '%s' "$model_status" | node --input-type=module -e '
       let source = "";

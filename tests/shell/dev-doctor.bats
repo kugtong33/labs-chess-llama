@@ -257,6 +257,34 @@ EOF
   assert_stderr_contains "[INFO] dev: decision trace endpoint disabled"
 }
 
+@test "dev cleanup reacquires the lifecycle lock to stop its owned model" {
+  local trace=$TEST_ROOT/model-stop-trace
+  run --separate-stderr bash -c '
+    set -Eeuo pipefail
+    CHESS_LLAMA_PROJECT_ROOT=$1
+    CHESS_LLAMA_TEST_TRACE=$2
+    source "$1/scripts/cli/core.sh"
+    chess_llama_doctor_main() { printf "%s\n" "{\"ok\":true,\"prerequisitesOk\":true,\"checks\":[]}"; }
+    chess_llama_database_main() { :; }
+    chess_llama_model_status() { printf "%s\n" "{\"healthy\":false}"; }
+    chess_llama_model_start() { chess_llama_model_lock; }
+    chess_llama_model_stop() { chess_llama_model_lock && printf "stopped\n" >"$CHESS_LLAMA_TEST_TRACE"; }
+    curl() { return 22; }
+    ss() { printf "%s\n" "LISTEN 0 128 127.0.0.1:5173"; }
+    setsid() {
+      sleep 2 </dev/null >/dev/null 2>&1 &
+      sleep 0.1
+      return 17
+    }
+    chess_llama_dev_main
+  ' _ "$PROJECT_ROOT" "$trace"
+
+  [ "$status" -eq 17 ]
+  [ "$(cat "$trace")" = stopped ]
+  assert_stderr_contains "[INFO] dev: stopping owned model runtime"
+  [[ $stderr != *"owned model runtime cleanup failed"* ]]
+}
+
 @test "dev isolates children and terminates process groups in reverse order" {
   local dev_source client_prefix gateway_prefix
   dev_source=$(<"$PROJECT_ROOT/scripts/cli/dev.sh")
