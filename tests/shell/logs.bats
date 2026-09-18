@@ -85,6 +85,42 @@ EOF
   assert_stderr_contains "Operations build is missing"
 }
 
+@test "logs follow rejects an explicitly empty game filter" {
+  trace_stream_entry
+  export CHESS_LLAMA_TEST_TRACE=$TEST_ROOT/trace
+  successful_follower_tools
+
+  run --separate-stderr "$PROJECT_ROOT/chess-llama" logs follow --game ''
+
+  [ "$status" -eq 2 ]
+  assert_stderr_contains "Option --game requires a UUID"
+  [ ! -e "$CHESS_LLAMA_TEST_TRACE" ]
+}
+
+@test "logs follow retains a fast curl failure while its parent is descheduled" {
+  trace_stream_entry
+  make_tool curl <<'EOF'
+exit 22
+EOF
+  make_tool node <<'EOF'
+cat >/dev/null
+EOF
+
+  # Delay parent-shell commands to deterministically let a fast child finish.
+  # This models parent descheduling without depending on follower internals.
+  run --separate-stderr timeout 10 bash -c '
+    set -Eeuo pipefail
+    source "$CHESS_LLAMA_PROJECT_ROOT/scripts/cli/core.sh"
+    set -T
+    trap "sleep 0.01" DEBUG
+    chess_llama_logs_main follow
+  '
+
+  [ "$status" -eq 5 ]
+  assert_stderr_contains "[ERROR] logs: trace stream connection failed"
+  assert_stderr_contains "exitCode=22"
+}
+
 @test "logs follow maps a gateway connection failure to health exit code" {
   trace_stream_entry
   make_tool curl <<'EOF'

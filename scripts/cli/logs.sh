@@ -56,6 +56,10 @@ chess_llama_logs_parse_follow_options() {
           return
         }
         CHESS_LLAMA_LOGS_GAME=$1
+        if [[ ! $CHESS_LLAMA_LOGS_GAME =~ ^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$ ]]; then
+          chess_llama_input_error 'Option --game requires a UUID'
+          return
+        fi
         ;;
       --format)
         shift
@@ -79,10 +83,6 @@ chess_llama_logs_parse_follow_options() {
       return
       ;;
   esac
-  if [[ -n $CHESS_LLAMA_LOGS_GAME && ! $CHESS_LLAMA_LOGS_GAME =~ ^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}$ ]]; then
-    chess_llama_input_error 'Option --game requires a UUID'
-    return
-  fi
   if [[ $CHESS_LLAMA_LOGS_FORMAT != human && $CHESS_LLAMA_LOGS_FORMAT != json ]]; then
     chess_llama_input_error "Unsupported output format: $CHESS_LLAMA_LOGS_FORMAT"
     return
@@ -113,9 +113,15 @@ chess_llama_logs_follow() {
   chess_llama_debug_command logs curl --fail --silent --show-error --no-buffer "$endpoint"
   chess_llama_debug_command logs node "$entry" --format "$CHESS_LLAMA_LOGS_FORMAT"
 
-  coproc CHESS_LLAMA_TRACE_CURL { exec curl --fail --silent --show-error --no-buffer "$endpoint"; }
+  # Keep the coprocess alive until its PID and pipe descriptors are captured.
+  # Bash otherwise clears them as soon as a fast curl process exits.
+  coproc CHESS_LLAMA_TRACE_CURL {
+    IFS= read -r || exit
+    exec curl --fail --silent --show-error --no-buffer "$endpoint"
+  }
   local curl_pid=$CHESS_LLAMA_TRACE_CURL_PID
   local curl_fd=${CHESS_LLAMA_TRACE_CURL[0]}
+  local start_fd=${CHESS_LLAMA_TRACE_CURL[1]}
   CHESS_LLAMA_LOGS_CURL_PID=$curl_pid
   # Duplicate the coprocess descriptor before starting an asynchronous reader.
   local stream_fd
@@ -123,6 +129,8 @@ chess_llama_logs_follow() {
   node "$entry" --format "$CHESS_LLAMA_LOGS_FORMAT" <&"$stream_fd" &
   CHESS_LLAMA_LOGS_FORMATTER_PID=$!
   exec {stream_fd}<&-
+  printf '\n' >&"$start_fd"
+  exec {start_fd}>&-
   local formatter_status curl_status
   if wait "$CHESS_LLAMA_LOGS_FORMATTER_PID"; then
     formatter_status=0
