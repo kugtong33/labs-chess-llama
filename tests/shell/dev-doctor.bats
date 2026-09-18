@@ -4,10 +4,22 @@
 
 load test_helper
 
+project_pnpm_version() {
+  "$TEST_NODE" --input-type=module -e '
+    import { readFileSync } from "node:fs";
+    const manifest = JSON.parse(readFileSync(process.argv[1], "utf8"));
+    const match = /^pnpm@(.+)$/.exec(manifest.packageManager ?? "");
+    if (match?.[1] === undefined) process.exit(1);
+    process.stdout.write(match[1]);
+  ' "$PROJECT_ROOT/package.json"
+}
+
 install_doctor_status_fakes() {
   export CHESS_LLAMA_TEST_TRACE=$TEST_ROOT/doctor-trace
+  export CHESS_LLAMA_TEST_PNPM_VERSION
+  CHESS_LLAMA_TEST_PNPM_VERSION=$(project_pnpm_version)
   make_tool pnpm <<'EOF'
-printf '11.5.1\n'
+printf '%s\n' "$CHESS_LLAMA_TEST_PNPM_VERSION"
 EOF
   make_tool docker <<'EOF'
 printf '%s\n' "$*" >>"$CHESS_LLAMA_TEST_TRACE"
@@ -25,6 +37,38 @@ case "$1" in
     ;;
 esac
 EOF
+}
+
+@test "doctor accepts the pnpm version declared by the project manifest" {
+  install_doctor_status_fakes
+  local expected
+  expected=$(project_pnpm_version)
+
+  run --separate-stderr "$PROJECT_ROOT/chess-llama" doctor --format json
+
+  [ "$status" -eq 3 ]
+  JSON_ACTUAL=$output PNPM_EXPECTED=$expected "$TEST_NODE" --input-type=module -e '
+    import assert from "node:assert/strict";
+    const report = JSON.parse(process.env.JSON_ACTUAL);
+    const check = report.checks.find((item) => item.name === "pnpm");
+    assert.equal(check.ok, true);
+    assert.equal(check.detail, process.env.PNPM_EXPECTED);
+  '
+}
+
+@test "doctor explains a pnpm mismatch using the manifest version" {
+  install_doctor_status_fakes
+  local expected
+  expected=$(project_pnpm_version)
+  make_tool pnpm <<'EOF'
+printf '0.0.0\n'
+EOF
+
+  run --keep-empty-lines --separate-stderr "$PROJECT_ROOT/chess-llama" doctor --format human
+
+  [ "$status" -eq 3 ]
+  assert_output_contains "0.0.0 (expected $expected)"
+  assert_output_contains "Run corepack prepare pnpm@$expected --activate."
 }
 
 @test "doctor reports JSON checks and the prerequisite exit code" {

@@ -22,4 +22,4 @@ The CLI uses strict Bash, quoted expansions, command arrays, absolute project pa
 
 ## Portability
 
-The supported environments are native Linux and WSL2. Runtime requirements are Bash 5+, Node 24, pnpm 11.5.1, Docker Compose, curl, sha256sum, util-linux (`flock`, `setsid`, and `script`), `ss`, and standard GNU userland. NVIDIA Container Toolkit is required for the llama.cpp CUDA container. The implementation avoids adding jq or the sqlite3 CLI because Node and the existing storage package already provide validated JSON and SQLite operations.
+The supported environments are native Linux and WSL2. Runtime requirements are Bash 5+, Node 24, the exact pnpm version declared by the root `package.json`, Docker Compose, curl, sha256sum, util-linux (`flock`, `setsid`, and `script`), `ss`, and standard GNU userland. NVIDIA Container Toolkit is required for the llama.cpp CUDA container. The implementation avoids adding jq or the sqlite3 CLI because Node and the existing storage package already provide validated JSON and SQLite operations.

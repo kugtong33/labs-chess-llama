@@ -34,6 +34,16 @@ chess_llama_doctor_port() {
   fi
 }
 
+chess_llama_doctor_pnpm_version() {
+  node --input-type=module -e '
+    import { readFileSync } from "node:fs";
+    const manifest = JSON.parse(readFileSync(process.argv[1], "utf8"));
+    const match = /^pnpm@(.+)$/.exec(manifest.packageManager ?? "");
+    if (match?.[1] === undefined) process.exit(1);
+    process.stdout.write(match[1]);
+  ' "$CHESS_LLAMA_PROJECT_ROOT/package.json"
+}
+
 chess_llama_doctor_report() {
   node --input-type=module -e '
     const values = process.argv.slice(1);
@@ -121,10 +131,15 @@ chess_llama_doctor_human_report() {
       ) {
         return "Run pnpm build before checking the runtime or model.";
       }
+      if (check.name === "pnpm") {
+        const expected = /\(expected ([^)]+)\)$/.exec(normalize(check.detail))?.[1];
+        return expected
+          ? `Run corepack prepare pnpm@${expected} --activate.`
+          : "Activate the pnpm version declared in package.json.";
+      }
       const commandRemedies = new Map([
         ["bash", "Run Chess Llama with Bash 5 or newer."],
         ["node", "Install and activate Node.js 24."],
-        ["pnpm", "Run corepack prepare pnpm@11.5.1 --activate."],
         ["docker", "Start Docker and ensure this user can access the Docker daemon."],
         ["compose", "Install or enable the Docker Compose plugin."],
         ["nvidia", "Verify the NVIDIA driver and Container Toolkit, then pull the pinned model image."],
@@ -184,17 +199,25 @@ chess_llama_doctor_main() {
   CHESS_LLAMA_DOCTOR_VALUES=()
   CHESS_LLAMA_DOCTOR_PREREQUISITES_OK=true
 
-  local version
+  local version expected_pnpm_version
   chess_llama_doctor_add bash "$([[ ${BASH_VERSINFO[0]} -ge 5 ]] && printf true || printf false)" "$BASH_VERSION" true
   if version=$(node --version 2>&1); then
     chess_llama_doctor_add node "$([[ $version == v24.* ]] && printf true || printf false)" "${version#v}" true
   else
     chess_llama_doctor_add node false "$version" true
   fi
-  if version=$(pnpm --version 2>&1); then
-    chess_llama_doctor_add pnpm "$([[ $version == 11.5.1 ]] && printf true || printf false)" "$version" true
+  if expected_pnpm_version=$(chess_llama_doctor_pnpm_version 2>/dev/null); then
+    if version=$(pnpm --version 2>&1); then
+      if [[ $version == "$expected_pnpm_version" ]]; then
+        chess_llama_doctor_add pnpm true "$version" true
+      else
+        chess_llama_doctor_add pnpm false "$version (expected $expected_pnpm_version)" true
+      fi
+    else
+      chess_llama_doctor_add pnpm false "${version:-pnpm unavailable} (expected $expected_pnpm_version)" true
+    fi
   else
-    chess_llama_doctor_add pnpm false "$version" true
+    chess_llama_doctor_add pnpm false 'packageManager must declare pnpm@<version> in package.json' true
   fi
   chess_llama_doctor_command docker true docker info --format '{{.ServerVersion}}'
   chess_llama_doctor_command compose true docker compose version

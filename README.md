@@ -39,7 +39,7 @@ Verify that host `nvidia-smi` works first. Then use `chess-llama doctor`; its co
 
 ```bash
 corepack enable
-corepack prepare pnpm@11.5.1 --activate
+corepack prepare "$(node -p "require('./package.json').packageManager")" --activate
 pnpm install --frozen-lockfile
 pnpm audit --prod --audit-level high
 pnpm build
