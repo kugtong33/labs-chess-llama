@@ -204,7 +204,7 @@ chess_llama_doctor_main() {
   done
 
   local image=''
-  if image=$(chess_llama_runtime_value image 2>/dev/null); then
+  if image=$(chess_llama_runtime_image 2>/dev/null); then
     chess_llama_doctor_command nvidia true docker run --rm --pull never --gpus all --entrypoint nvidia-smi "$image" -L
   else
     chess_llama_doctor_add nvidia false 'Runtime manifest operation is unavailable' true

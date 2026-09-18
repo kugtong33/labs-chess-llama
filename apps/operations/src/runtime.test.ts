@@ -6,7 +6,7 @@ import {
   findRuntimeProfile,
   findRuntimeProfileByFile,
   loadRuntimeManifest,
-} from './runtime.js';
+} from './runtime-manifest.js';
 
 describe('runtime manifest operations', () => {
   it('loads and selects a validated profile', async () => {

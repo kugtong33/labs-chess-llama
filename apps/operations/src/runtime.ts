@@ -1,33 +1,8 @@
-import { readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
-
 import {
-  runtimeManifestSchema,
-  type RuntimeManifest,
-  type RuntimeProfile,
-} from '@chess-llama/contracts';
-
-export async function loadRuntimeManifest(
-  path: string,
-): Promise<RuntimeManifest> {
-  return runtimeManifestSchema.parse(JSON.parse(await readFile(path, 'utf8')));
-}
-
-export function findRuntimeProfile(
-  manifest: RuntimeManifest,
-  profileId: string,
-): RuntimeProfile {
-  const profile = manifest.profiles.find((item) => item.id === profileId);
-  if (!profile) throw new Error(`Unknown model profile: ${profileId}`);
-  return profile;
-}
-
-export function findRuntimeProfileByFile(
-  manifest: RuntimeManifest,
-  file: string,
-): RuntimeProfile | undefined {
-  return manifest.profiles.find((profile) => profile.file === file);
-}
+  findRuntimeProfile,
+  findRuntimeProfileByFile,
+  loadRuntimeManifest,
+} from './runtime-manifest.js';
 
 async function main(): Promise<void> {
   const manifestPath = process.env.CHESS_LLAMA_RUNTIME_MANIFEST;
@@ -72,11 +47,9 @@ async function main(): Promise<void> {
   throw new Error(`Unknown runtime operation: ${operation ?? ''}`);
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  main().catch((error: unknown) => {
-    process.stderr.write(
-      `${error instanceof Error ? error.message : String(error)}\n`,
-    );
-    process.exitCode = 1;
-  });
-}
+main().catch((error: unknown) => {
+  process.stderr.write(
+    `${error instanceof Error ? error.message : String(error)}\n`,
+  );
+  process.exitCode = 1;
+});

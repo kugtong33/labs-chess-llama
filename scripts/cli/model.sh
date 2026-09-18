@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+readonly CHESS_LLAMA_DEFAULT_IMAGE='ghcr.io/ggml-org/llama.cpp@sha256:5268283a8d6510d167364f19aee93e98180d8eb0cac4b7edb20af7e3edf40c17'
+
 chess_llama_model_help() {
   cat <<'EOF'
 Usage: chess-llama model [command]
@@ -26,6 +28,16 @@ chess_llama_runtime_value() {
   chess_llama_require_operations_entry "$entry" model || return
   CHESS_LLAMA_RUNTIME_MANIFEST=$CHESS_LLAMA_PROJECT_ROOT/config/runtime-manifest.json \
     node "$entry" "$@"
+}
+
+chess_llama_runtime_image() {
+  local image
+  image=$(chess_llama_runtime_value image) || return
+  if [[ -z ${image//[[:space:]]/} ]]; then
+    image=$CHESS_LLAMA_DEFAULT_IMAGE
+    chess_llama_warn runtime 'manifest returned an empty image; using pinned default' image "$image"
+  fi
+  printf '%s\n' "$image"
 }
 
 chess_llama_parse_profile_option() {
@@ -102,7 +114,7 @@ chess_llama_profile_field() {
 chess_llama_model_environment() {
   local profile=$1
   chess_llama_resolve_paths
-  CHESS_LLAMA_IMAGE=$(chess_llama_runtime_value image) || return
+  CHESS_LLAMA_IMAGE=$(chess_llama_runtime_image) || return
   CHESS_LLAMA_MODEL_FILE=$(chess_llama_profile_field "$profile" file) || return
   CHESS_LLAMA_MODEL_PORT=${CHESS_LLAMA_MODEL_PORT:-8080}
   CHESS_LLAMA_PORT_BINDING=127.0.0.1:$CHESS_LLAMA_MODEL_PORT:8080

@@ -11,7 +11,7 @@
     "chess-llama": "./chess-llama",
     "typecheck": "pnpm -r typecheck && tsc --noEmit -p scripts/tsconfig.json && tsc --noEmit -p tests/tsconfig.json",
     "test": "vitest run && pnpm test:shell",
-    "test:shell": "bats tests/shell",
+    "test:shell": "pnpm --filter @chess-llama/operations... build && bats tests/shell",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:watch": "vitest",

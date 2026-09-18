@@ -1,8 +1,26 @@
 #!/usr/bin/env bats
 # Bats isolates each test in a subshell.
-# shellcheck disable=SC2030,SC2031
+# shellcheck disable=SC2016,SC2030,SC2031
 
 load test_helper
+
+@test "runtime image uses the pinned default when the manifest command is empty" {
+  local runtime_entry=$TEST_ROOT/runtime.js
+  printf 'placeholder\n' >"$runtime_entry"
+  export CHESS_LLAMA_RUNTIME_ENTRY=$runtime_entry
+  make_tool node <<'EOF'
+exit 0
+EOF
+
+  run --separate-stderr bash -c \
+    'source "$1/scripts/cli/core.sh"; chess_llama_runtime_image' \
+    _ "$PROJECT_ROOT"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "ghcr.io/ggml-org/llama.cpp@sha256:5268283a8d6510d167364f19aee93e98180d8eb0cac4b7edb20af7e3edf40c17" ]
+  assert_stderr_contains "[WARN] runtime: manifest returned an empty image; using pinned default"
+  assert_stderr_contains "image=$output"
+}
 
 @test "unknown model profiles use the stable input exit code" {
   local runtime_entry=$TEST_ROOT/runtime.js
