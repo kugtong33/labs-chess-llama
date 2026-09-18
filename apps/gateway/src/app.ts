@@ -42,7 +42,10 @@ export function buildApp(dependencies: GatewayDependencies): FastifyInstance {
       ],
     },
   });
-  const unsubscribeTraceLog = dependencies.traceHub?.subscribe({}, (event) => {
+  const traceHub = dependencies.config.demoTrace
+    ? dependencies.traceHub
+    : undefined;
+  const unsubscribeTraceLog = traceHub?.subscribe({}, (event) => {
     app.log.info(
       {
         layer: event.layer,

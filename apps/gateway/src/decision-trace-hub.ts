@@ -14,6 +14,10 @@ type DecisionTraceListener = (
 interface Subscription {
   filter: DecisionTraceFilter;
   listener: DecisionTraceListener;
+  pending: DecisionTraceEvent[];
+  active: boolean;
+  delivering: boolean;
+  scheduled?: ReturnType<typeof setImmediate>;
 }
 
 const MAX_EVENTS = 200;
@@ -39,13 +43,10 @@ export class DecisionTraceHub {
 
     for (const subscription of this.subscriptions) {
       if (!matches(subscription.filter, event)) continue;
-      try {
-        void Promise.resolve(subscription.listener(event)).catch(
-          () => undefined,
-        );
-      } catch {
-        // A trace subscriber is observational and cannot interrupt a move.
-      }
+      subscription.pending.push(event);
+      if (subscription.pending.length > MAX_EVENTS)
+        subscription.pending.shift();
+      scheduleDelivery(subscription);
     }
     return event;
   }
@@ -58,17 +59,54 @@ export class DecisionTraceHub {
     filter: DecisionTraceFilter,
     listener: DecisionTraceListener,
   ): () => void {
-    const subscription = { filter, listener };
+    const subscription: Subscription = {
+      filter,
+      listener,
+      pending: this.snapshot(filter),
+      active: true,
+      delivering: false,
+    };
     this.subscriptions.add(subscription);
-    for (const event of this.snapshot(filter)) {
-      try {
-        void Promise.resolve(listener(event)).catch(() => undefined);
-      } catch {
-        // Buffered replay has the same best-effort delivery guarantee.
-      }
-    }
-    return () => this.subscriptions.delete(subscription);
+    scheduleDelivery(subscription);
+    return () => {
+      subscription.active = false;
+      subscription.pending.length = 0;
+      if (subscription.scheduled !== undefined)
+        clearImmediate(subscription.scheduled);
+      this.subscriptions.delete(subscription);
+    };
   }
+}
+
+function scheduleDelivery(subscription: Subscription): void {
+  if (
+    !subscription.active ||
+    subscription.delivering ||
+    subscription.scheduled !== undefined ||
+    subscription.pending.length === 0
+  )
+    return;
+  // A macrotask keeps observer code out of publication and move continuations.
+  subscription.scheduled = setImmediate(() => {
+    subscription.scheduled = undefined;
+    if (!subscription.active) return;
+    const event = subscription.pending.shift();
+    if (event === undefined) return;
+    subscription.delivering = true;
+    const finished = () => {
+      subscription.delivering = false;
+      scheduleDelivery(subscription);
+    };
+    try {
+      // One in-flight callback per subscriber bounds even stalled async observers.
+      void Promise.resolve(subscription.listener(event)).then(
+        finished,
+        finished,
+      );
+    } catch {
+      finished();
+    }
+  });
 }
 
 function matches(

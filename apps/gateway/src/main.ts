@@ -110,7 +110,7 @@ export async function startGateway(): Promise<void> {
     const settings = createSettingsRepository(database);
     stockfish = await StockfishJsAnalyzer.create();
     const selector = new LlamaCppClient({ baseUrl: config.llamaBaseUrl });
-    const traceHub = new DecisionTraceHub();
+    const traceHub = config.demoTrace ? new DecisionTraceHub() : undefined;
     const service = new GameService({
       games,
       settings,

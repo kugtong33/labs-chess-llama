@@ -28,6 +28,88 @@ function event(overrides: Record<string, unknown> = {}) {
 }
 
 describe('DecisionTraceHub', () => {
+  it('returns from publish before running a blocking synchronous observer', async () => {
+    const hub = new DecisionTraceHub();
+    const order: string[] = [];
+    let delivered!: () => void;
+    const delivery = new Promise<void>((resolve) => {
+      delivered = resolve;
+    });
+    hub.subscribe({}, () => {
+      order.push('observer started');
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1);
+      order.push('observer finished');
+      delivered();
+    });
+    hub.publish(event());
+    order.push('publish returned');
+    expect(order).toEqual(['publish returned']);
+    await delivery;
+    expect(order).toEqual([
+      'publish returned',
+      'observer started',
+      'observer finished',
+    ]);
+  });
+
+  it('bounds a stalled subscriber queue and independently delivers to healthy subscribers', async () => {
+    const hub = new DecisionTraceHub();
+    const slow: number[] = [];
+    const healthy: number[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let started!: () => void;
+    const start = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    let slowDone!: () => void;
+    let healthyDone!: () => void;
+    const slowCompletion = new Promise<void>((resolve) => {
+      slowDone = resolve;
+    });
+    const healthyCompletion = new Promise<void>((resolve) => {
+      healthyDone = resolve;
+    });
+    hub.subscribe({}, async (value) => {
+      slow.push(value.sequence);
+      if (value.sequence === 0) {
+        started();
+        await gate;
+      }
+      if (value.sequence === 205) slowDone();
+    });
+    hub.subscribe({}, (value) => {
+      healthy.push(value.sequence);
+      if (value.sequence === 205) healthyDone();
+    });
+    hub.publish(event());
+    await start;
+    for (let index = 1; index <= 205; index += 1) hub.publish(event());
+    await healthyCompletion;
+    expect(slow).toEqual([0]);
+    release();
+    await slowCompletion;
+    expect(slow).toHaveLength(201);
+    expect(slow.slice(0, 3)).toEqual([0, 6, 7]);
+    expect(slow.at(-1)).toBe(205);
+    expect(healthy.at(-1)).toBe(205);
+    expect(hub.snapshot({})).toHaveLength(200);
+  });
+
+  it('does not invoke replay or queued live events after unsubscribe', async () => {
+    const hub = new DecisionTraceHub();
+    hub.publish(event());
+    const received: number[] = [];
+    const unsubscribe = hub.subscribe({}, (value) => {
+      received.push(value.sequence);
+    });
+    hub.publish(event());
+    unsubscribe();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(received).toEqual([]);
+  });
   it('assigns ordered event metadata', () => {
     const hub = new DecisionTraceHub();
 
@@ -88,15 +170,23 @@ describe('DecisionTraceHub', () => {
     ]);
   });
 
-  it('replays matching buffered events and stops after unsubscribe', () => {
+  it('replays matching buffered events and stops after unsubscribe', async () => {
     const hub = new DecisionTraceHub();
     hub.publish(event());
-    const listener = vi.fn<(event: DecisionTraceEvent) => void>();
+    let delivered!: () => void;
+    const delivery = new Promise<void>((resolve) => {
+      delivered = resolve;
+    });
+    const listener = vi.fn<(event: DecisionTraceEvent) => void>((value) => {
+      if (value.sequence === 1) delivered();
+    });
 
     const unsubscribe = hub.subscribe({ gameId: gameOne }, listener);
     hub.publish(event());
+    await delivery;
     unsubscribe();
     hub.publish(event());
+    await new Promise((resolve) => setImmediate(resolve));
 
     expect(listener).toHaveBeenCalledTimes(2);
     expect(listener.mock.calls.map(([value]) => value.sequence)).toEqual([
@@ -104,7 +194,7 @@ describe('DecisionTraceHub', () => {
     ]);
   });
 
-  it('isolates throwing listeners while publishing to healthy subscribers', () => {
+  it('isolates throwing listeners while publishing to healthy subscribers', async () => {
     const hub = new DecisionTraceHub();
     const healthy = vi.fn();
     hub.subscribe({}, () => {
@@ -113,6 +203,7 @@ describe('DecisionTraceHub', () => {
     hub.subscribe({}, healthy);
 
     expect(() => hub.publish(event())).not.toThrow();
+    await new Promise((resolve) => setImmediate(resolve));
     expect(healthy).toHaveBeenCalledTimes(1);
   });
 });

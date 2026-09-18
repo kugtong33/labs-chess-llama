@@ -209,6 +209,14 @@ function buildTestApp(
 }
 
 describe('Fastify gateway API', () => {
+  it('does not subscribe trace logging when tracing is disabled', async () => {
+    const { app, traceHub } = buildTestApp({ demoTrace: false });
+    const info = vi.spyOn(app.log, 'info');
+    traceHub.publish(traceFixture());
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(info).not.toHaveBeenCalled();
+    await app.close();
+  });
   it('passes a UUID trace ID and the HTTP request ID into AI-capable operations', async () => {
     const harness = buildTestApp();
     const response = await harness.app.inject({
@@ -365,6 +373,7 @@ describe('Fastify gateway API', () => {
     const { app, traceHub } = buildTestApp({ demoTrace: true });
     const info = vi.spyOn(app.log, 'info');
     const event = traceHub.publish(traceFixture());
+    await new Promise((resolve) => setImmediate(resolve));
     expect(info.mock.calls).toEqual([
       [
         expect.objectContaining({
@@ -380,6 +389,7 @@ describe('Fastify gateway API', () => {
     ]);
     await app.close();
     traceHub.publish(traceFixture());
+    await new Promise((resolve) => setImmediate(resolve));
     expect(info).toHaveBeenCalledTimes(1);
   });
 

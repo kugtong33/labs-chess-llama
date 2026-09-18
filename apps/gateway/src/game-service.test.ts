@@ -313,6 +313,30 @@ function createServiceHarness(
 }
 
 describe('GameService', () => {
+  it('finishes immediate move orchestration before invoking trace observers', async () => {
+    const { service, traceHub } = createServiceHarness();
+    const game = await service.createGame({ humanColor: 'white' });
+    const order: string[] = [];
+    let complete!: () => void;
+    const delivered = new Promise<void>((resolve) => {
+      complete = resolve;
+    });
+    const unsubscribe = traceHub.subscribe({}, (event) => {
+      order.push(event.stage);
+      if (event.stage === 'ai_turn_completed') complete();
+    });
+    const moved = await service.submitHumanMove(game.id, {
+      from: 'e2',
+      to: 'e4',
+      expectedPly: 0,
+    });
+    order.push('move returned');
+    expect(moved.moves.map((move) => move.uci)).toEqual(['e2e4', 'e7e5']);
+    expect(order).toEqual(['move returned']);
+    await delivered;
+    expect(order.at(-1)).toBe('ai_turn_completed');
+    unsubscribe();
+  });
   it('exposes stored decision history with public dates and missing-game errors', async () => {
     const { service } = createServiceHarness();
     const game = await service.createGame({ humanColor: 'white' });
