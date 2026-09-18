@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 # Bats runs each test in an isolated subshell; exports do not leak between tests.
-# shellcheck disable=SC2030,SC2031
+# Single-quoted bash -c scripts intentionally expand variables in the child shell.
+# shellcheck disable=SC2016,SC2030,SC2031
 
 load test_helper
 
