@@ -9,6 +9,7 @@ RUN apt-get update \
       libreoffice-impress \
       poppler-utils \
       python3 \
+      zbar-tools \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/deck

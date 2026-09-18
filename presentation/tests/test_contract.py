@@ -9,12 +9,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class PresentationContractTest(unittest.TestCase):
-    def test_content_has_sixteen_slides_and_required_story_beats(self) -> None:
+    def test_content_has_seventeen_slides_and_required_story_beats(self) -> None:
         content = json.loads((ROOT / "src" / "content.json").read_text())
 
         self.assertEqual(content["title"], "Local LLMs: My 8GB VRAM vs the World")
-        self.assertEqual(len(content["slides"]), 16)
-        self.assertEqual([slide["number"] for slide in content["slides"]], list(range(1, 17)))
+        self.assertEqual(len(content["slides"]), 17)
+        self.assertEqual([slide["number"] for slide in content["slides"]], list(range(1, 18)))
 
         rendered = json.dumps(content, ensure_ascii=False)
         for required in (
@@ -29,9 +29,13 @@ class PresentationContractTest(unittest.TestCase):
             "RTX 4060",
             "Stockfish",
             "open-weight",
+            "https://github.com/kugtong33/labs-chess-llama",
+            "https://github.com/kugtong33/labs-local-llm",
         ):
             with self.subTest(required=required):
                 self.assertIn(required, rendered)
+
+        self.assertEqual(content["slides"][-1]["kind"], "repositories")
 
         for slide in content["slides"]:
             self.assertTrue(slide["title"].strip())

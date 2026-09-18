@@ -18,28 +18,24 @@ for source in "$render_dir"/slide-*.png; do
     "$thumb_dir/$filename"
 done
 
-for row in 0 1 2 3; do
+slides=("$render_dir"/slide-*.png)
+slide_count=${#slides[@]}
+row_count=$(((slide_count + 3) / 4))
+rows=()
+
+for ((row = 0; row < row_count; row += 1)); do
   first=$((row * 4 + 1))
-  second=$((first + 1))
-  third=$((first + 2))
-  fourth=$((first + 3))
-  printf -v first_name 'slide-%02d.png' "$first"
-  printf -v second_name 'slide-%02d.png' "$second"
-  printf -v third_name 'slide-%02d.png' "$third"
-  printf -v fourth_name 'slide-%02d.png' "$fourth"
-  convert \
-    "$thumb_dir/$first_name" \
-    "$thumb_dir/$second_name" \
-    "$thumb_dir/$third_name" \
-    "$thumb_dir/$fourth_name" \
-    +append \
-    "$thumb_dir/row-$row.png"
+  row_images=()
+  for ((column = 0; column < 4; column += 1)); do
+    slide_number=$((first + column))
+    if ((slide_number <= slide_count)); then
+      printf -v slide_name 'slide-%02d.png' "$slide_number"
+      row_images+=("$thumb_dir/$slide_name")
+    fi
+  done
+  row_path="$thumb_dir/row-$row.png"
+  convert "${row_images[@]}" +append -background '#171a16' -gravity west -extent 1536x227 "$row_path"
+  rows+=("$row_path")
 done
 
-convert \
-  "$thumb_dir/row-0.png" \
-  "$thumb_dir/row-1.png" \
-  "$thumb_dir/row-2.png" \
-  "$thumb_dir/row-3.png" \
-  -append \
-  "rendered/$stem-contact-sheet.png"
+convert "${rows[@]}" -append "rendered/$stem-contact-sheet.png"

@@ -200,6 +200,26 @@
         "Chess Llama interface preview · original vector composition for this deck"
       ],
       "notes": "Appendix slide. Full URLs, license links, file hashes, and alteration notes are in presentation/assets/ATTRIBUTION.md. Logos are used only to identify their projects and do not imply sponsorship or endorsement."
+    },
+    {
+      "number": 17,
+      "kind": "repositories",
+      "eyebrow": "EXPLORE THE PROJECTS",
+      "title": "Take the models home",
+      "repositories": [
+        {
+          "name": "Chess Llama",
+          "url": "https://github.com/kugtong33/labs-chess-llama",
+          "description": "The local-LLM chess decision demo"
+        },
+        {
+          "name": "Dockerized llama.cpp",
+          "url": "https://github.com/kugtong33/labs-local-llm",
+          "description": "A containerized local inference stack"
+        }
+      ],
+      "footer": "Scan · clone · run locally",
+      "notes": "Leave this slide visible during questions. The left QR code opens the Chess Llama repository. The right QR code opens the Dockerized llama.cpp repository. Both repository names and URLs are also readable and clickable for anyone viewing the deck digitally."
     }
   ]
 }

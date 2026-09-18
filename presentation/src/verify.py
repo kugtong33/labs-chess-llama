@@ -6,7 +6,7 @@ import zipfile
 from pathlib import Path
 
 
-EXPECTED_SLIDES = 16
+EXPECTED_SLIDES = 17
 OLE_MAGIC = bytes.fromhex("D0CF11E0A1B11AE1")
 
 

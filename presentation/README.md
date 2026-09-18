@@ -19,7 +19,7 @@ contact sheet are written to `presentation/rendered/`.
 ## Presenting
 
 The core talk is slides 1–14. Slides 15–16 are source and media-credit
-appendices. Every slide has speaker notes. Replace the presenter placeholder on
+appendices; slide 17 provides scannable project links. Every slide has speaker notes. Replace the presenter placeholder on
 slide 1, then rehearse to roughly these beats:
 
 - Context and thesis, slides 1–3: 3 minutes

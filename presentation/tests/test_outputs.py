@@ -26,8 +26,8 @@ class PresentationOutputTests(unittest.TestCase):
                 for name in archive.namelist()
                 if re.fullmatch(r"ppt/notesSlides/notesSlide\d+\.xml", name)
             ]
-        self.assertEqual(len(slides), 16)
-        self.assertEqual(len(notes), 16)
+        self.assertEqual(len(slides), 17)
+        self.assertEqual(len(notes), 17)
 
     def test_odp_is_a_complete_editable_deck(self):
         path = DIST / f"{STEM}.odp"
@@ -36,8 +36,8 @@ class PresentationOutputTests(unittest.TestCase):
             self.assertIsNone(archive.testzip())
             self.assertEqual(archive.read("mimetype"), b"application/vnd.oasis.opendocument.presentation")
             content = archive.read("content.xml")
-        self.assertEqual(content.count(b"<draw:page "), 16)
-        self.assertEqual(content.count(b"<presentation:notes"), 16)
+        self.assertEqual(content.count(b"<draw:page "), 17)
+        self.assertEqual(content.count(b"<presentation:notes"), 17)
 
     def test_pdf_and_legacy_ppt_are_present(self):
         pdf = DIST / f"{STEM}.pdf"

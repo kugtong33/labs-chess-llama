@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const PptxGenJS = require("pptxgenjs");
+const QRCode = require("qrcode");
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..");
@@ -35,6 +36,18 @@ const C = {
   white: "FFFDF7",
   black: "080A08",
 };
+
+const QR_CODES = new Map();
+for (const slide of content.slides.filter((item) => item.kind === "repositories")) {
+  for (const repository of slide.repositories) {
+    QR_CODES.set(repository.url, await QRCode.toDataURL(repository.url, {
+      errorCorrectionLevel: "H",
+      margin: 3,
+      width: 900,
+      color: { dark: `#${C.dark}`, light: `#${C.white}` },
+    }));
+  }
+}
 
 const pptx = new PptxGenJS();
 pptx.layout = "LAYOUT_WIDE";
@@ -458,6 +471,62 @@ function creditsSlide(item) {
   text(slide, "Full URLs, licenses, hashes, and modification notes: assets/ATTRIBUTION.md", 0.66, 6.67, 11.8, 0.27, { fontSize: 11.5, italic: true, color: C.muted, align: "center" });
 }
 
+function repositoriesSlide(item) {
+  const slide = pptx.addSlide();
+  slide.background = { color: C.dark };
+  rect(slide, 0, 0, 0.16, 7.5, C.accent);
+  eyebrow(slide, item.eyebrow, 0.72, 0.48, C.accent2);
+  text(slide, item.title, 0.7, 0.87, 8.6, 0.67, { fontSize: 34, bold: true, color: C.white });
+  text(slide, "Two practical starting points for building with local models.", 8.55, 0.94, 4.0, 0.42, { fontSize: 15.5, color: "C9CEC3", align: "right" });
+
+  item.repositories.forEach((repository, index) => {
+    const x = 0.72 + index * 6.23;
+    rect(slide, x, 1.77, 5.66, 4.75, index === 0 ? C.panel : "222720", 0.14, index === 0 ? C.line : "3E463B");
+    pill(slide, `REPOSITORY 0${index + 1}`, x + 0.34, 2.07, 1.5, index === 0 ? C.paleOrange : C.green, index === 0 ? C.ink : C.white);
+    slide.addImage({
+      data: QR_CODES.get(repository.url),
+      x: x + 0.34,
+      y: 2.68,
+      w: 2.65,
+      h: 2.65,
+      hyperlink: { url: repository.url },
+      altText: `QR code for ${repository.name}: ${repository.url}`,
+    });
+    text(slide, repository.name, x + 3.27, 2.73, 2.0, 0.8, {
+      fontSize: 22,
+      bold: true,
+      color: index === 0 ? C.ink : C.white,
+      breakLine: true,
+      valign: "top",
+    });
+    text(slide, repository.description, x + 3.27, 3.73, 1.95, 0.9, {
+      fontSize: 15.5,
+      color: index === 0 ? C.muted : "C9CEC3",
+      breakLine: true,
+      valign: "top",
+    });
+    line(slide, x + 3.27, 4.84, 1.94, 0, index === 0 ? C.line : "4A5246", 1);
+    text(slide, repository.url.replace("https://", ""), x + 3.27, 5.05, 1.95, 0.84, {
+      fontFace: "Liberation Mono",
+      fontSize: 10,
+      color: index === 0 ? C.accent : C.accent2,
+      breakLine: true,
+      valign: "top",
+      hyperlink: { url: repository.url },
+    });
+  });
+
+  text(slide, item.footer.toUpperCase(), 0.72, 6.86, 11.9, 0.28, {
+    fontFace: "Liberation Mono",
+    fontSize: 11,
+    bold: true,
+    color: C.accent2,
+    align: "center",
+    charSpacing: 2,
+  });
+  addNotes(slide, item);
+}
+
 for (const item of content.slides) {
   switch (item.kind) {
     case "title": titleSlide(item); break;
@@ -475,6 +544,7 @@ for (const item of content.slides) {
     case "closing": closingSlide(item); break;
     case "sources": sourcesSlide(item); break;
     case "credits": creditsSlide(item); break;
+    case "repositories": repositoriesSlide(item); break;
     default: throw new Error(`Unknown slide kind: ${item.kind}`);
   }
 }
