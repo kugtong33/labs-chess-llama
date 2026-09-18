@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LlamaCppClient } from '@chess-llama/llama-protocol';
+import type {
+  SelectMoveRequest,
+  SelectMoveProgressEvent,
+} from '@chess-llama/llama-protocol';
 import { StockfishJsAnalyzer } from '@chess-llama/stockfish-adapter';
 import type { GatewayDependencies } from './app.js';
 import { buildApp } from './app.js';
@@ -33,7 +37,7 @@ describe('production trace configuration', () => {
       } as unknown as StockfishJsAnalyzer);
       vi.spyOn(LlamaCppClient.prototype, 'selectMove').mockImplementation(
         (request) => {
-          request.onProgress?.({ type: 'attempt_started', attempt: 0 });
+          notifyProgress(request, { type: 'attempt_started', attempt: 0 });
           return Promise.resolve({
             uci: 'e2e4',
             commentary: 'Central control.',
@@ -81,3 +85,14 @@ describe('production trace configuration', () => {
     },
   );
 });
+
+function notifyProgress(
+  request: SelectMoveRequest,
+  event: SelectMoveProgressEvent,
+): void {
+  try {
+    void Promise.resolve(request.onProgress?.(event)).catch(() => undefined);
+  } catch {
+    // Test doubles preserve production's diagnostic-only observer behavior.
+  }
+}

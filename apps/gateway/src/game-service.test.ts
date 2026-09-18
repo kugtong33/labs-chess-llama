@@ -20,6 +20,7 @@ import type {
   MoveSelection,
   MoveSelector,
   SelectMoveRequest,
+  SelectMoveProgressEvent,
 } from '@chess-llama/llama-protocol';
 
 import { GameLock } from './game-lock.js';
@@ -231,14 +232,14 @@ class FakeSelector implements MoveSelector {
     });
   }
   async selectMove(request: SelectMoveRequest): Promise<MoveSelection> {
-    request.onProgress?.({ type: 'attempt_started', attempt: 0 });
+    notifyProgress(request, { type: 'attempt_started', attempt: 0 });
     if (this.retry) {
-      request.onProgress?.({
+      notifyProgress(request, {
         type: 'retry_scheduled',
         attempt: 1,
         reason: 'timeout',
       });
-      request.onProgress?.({ type: 'attempt_started', attempt: 1 });
+      notifyProgress(request, { type: 'attempt_started', attempt: 1 });
     }
     this.events.push(
       `select-llama:${request.candidates.map((candidate) => candidate.uci).join(',')}`,
@@ -255,6 +256,17 @@ class FakeSelector implements MoveSelector {
       tokensPerSecond: 20,
       retryCount: this.retry ? 1 : 0,
     };
+  }
+}
+
+function notifyProgress(
+  request: SelectMoveRequest,
+  event: SelectMoveProgressEvent,
+): void {
+  try {
+    void Promise.resolve(request.onProgress?.(event)).catch(() => undefined);
+  } catch {
+    // Test doubles preserve production's diagnostic-only observer behavior.
   }
 }
 
