@@ -95,7 +95,7 @@ describe('model bootstrap', () => {
 
   it('streams a verified download and atomically activates it', async () => {
     const fixture = await createFixture();
-    const fetcher = vi.fn(async () => new Response(modelBytes));
+    const fetcher = vi.fn(() => Promise.resolve(new Response(modelBytes)));
 
     await expect(
       bootstrapModel({ environment: fixture.environment, fetcher }),
@@ -114,7 +114,9 @@ describe('model bootstrap', () => {
 
   it('cleans up the partial download when the server returns an HTTP error', async () => {
     const fixture = await createFixture();
-    const fetcher = vi.fn(async () => new Response(null, { status: 503 }));
+    const fetcher = vi.fn(() =>
+      Promise.resolve(new Response(null, { status: 503 })),
+    );
 
     await expect(
       bootstrapModel({ environment: fixture.environment, fetcher }),
@@ -134,8 +136,8 @@ describe('model bootstrap', () => {
       join(fixture.modelDirectory, 'current.gguf'),
       previousModel,
     );
-    const fetcher = vi.fn(
-      async () => new Response(Buffer.from('tampered model')),
+    const fetcher = vi.fn(() =>
+      Promise.resolve(new Response(Buffer.from('tampered model'))),
     );
 
     await expect(
@@ -148,5 +150,25 @@ describe('model bootstrap', () => {
     await expect(readdir(fixture.modelDirectory)).resolves.toEqual([
       'current.gguf',
     ]);
+  });
+
+  it('does not take ownership of a colliding stale partial file', async () => {
+    const fixture = await createFixture();
+    await mkdir(fixture.modelDirectory, { recursive: true });
+    const stalePartial = join(
+      fixture.modelDirectory,
+      `.current.gguf.partial-${process.pid}`,
+    );
+    await writeFile(stalePartial, 'another bootstrap owns this file');
+    const fetcher = vi.fn(() => Promise.resolve(new Response(modelBytes)));
+
+    await expect(
+      bootstrapModel({ environment: fixture.environment, fetcher }),
+    ).resolves.toMatchObject({ status: 'downloaded' });
+
+    await expect(readFile(stalePartial, 'utf8')).resolves.toBe(
+      'another bootstrap owns this file',
+    );
+    await expect(readdir(fixture.modelDirectory)).resolves.toHaveLength(2);
   });
 });
