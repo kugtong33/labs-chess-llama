@@ -1,3 +1,4 @@
+import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { GameService } from './game-service.js';
@@ -145,7 +146,19 @@ export async function startGateway(): Promise<void> {
   }
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+function isDirectExecution(): boolean {
+  if (!process.argv[1]) return false;
+  try {
+    return (
+      realpathSync(process.argv[1]) ===
+      realpathSync(fileURLToPath(import.meta.url))
+    );
+  } catch {
+    return false;
+  }
+}
+
+if (isDirectExecution()) {
   startGateway().catch((error: unknown) => {
     console.error(error);
     process.exitCode = 1;
