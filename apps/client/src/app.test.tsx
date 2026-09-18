@@ -30,6 +30,8 @@ function createFakeGateway(): GatewayApi {
     health: () => Promise.resolve(health),
     listGames: () => Promise.resolve([]),
     getGame: unused,
+    getDecisions: unused,
+    decisionEventsUrl: () => '/api/demo/events',
     createGame: unused,
     submitHumanMove: unused,
     retryAiMove: unused,
