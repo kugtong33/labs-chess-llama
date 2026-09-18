@@ -144,6 +144,82 @@ function successfulRunner() {
 }
 
 describe('application workspace bootstrap', () => {
+  it('recovers an empty current directory left by container creation', async () => {
+    const fixture = await createFixture();
+    const current = join(fixture.workspaceDirectory, 'current');
+    await mkdir(current, { recursive: true });
+
+    const result = await bootstrapWorkspace({
+      environment: fixture.environment,
+      runCommand: successfulRunner(),
+    });
+
+    await expect(readlink(current)).resolves.toBe(
+      `releases/${result.sourceHash}`,
+    );
+    await expect(
+      access(join(current, 'apps/gateway/dist/main.js')),
+    ).resolves.toBeUndefined();
+  });
+
+  it('preserves a non-empty current directory instead of deleting its contents', async () => {
+    const fixture = await createFixture();
+    const current = join(fixture.workspaceDirectory, 'current');
+    await mkdir(join(current, 'nested'), { recursive: true });
+    await writeFile(join(current, 'nested/keep.txt'), 'user data');
+
+    await expect(
+      bootstrapWorkspace({
+        environment: fixture.environment,
+        runCommand: successfulRunner(),
+      }),
+    ).rejects.toThrow();
+
+    await expect(
+      readFile(join(current, 'nested/keep.txt'), 'utf8'),
+    ).resolves.toBe('user data');
+    expect(
+      (await readdir(fixture.workspaceDirectory)).some((name) =>
+        name.startsWith('.current.partial-'),
+      ),
+    ).toBe(false);
+  });
+
+  it('preserves an unexpected file at current and fails activation', async () => {
+    const fixture = await createFixture();
+    const current = join(fixture.workspaceDirectory, 'current');
+    await mkdir(fixture.workspaceDirectory, { recursive: true });
+    await writeFile(current, 'user data');
+
+    await expect(
+      bootstrapWorkspace({
+        environment: fixture.environment,
+        runCommand: successfulRunner(),
+      }),
+    ).rejects.toThrow();
+
+    await expect(readFile(current, 'utf8')).resolves.toBe('user data');
+  });
+
+  it('preserves an unexpected current symlink outside the releases directory', async () => {
+    const fixture = await createFixture();
+    const current = join(fixture.workspaceDirectory, 'current');
+    await mkdir(fixture.workspaceDirectory, { recursive: true });
+    await symlink('../source', current);
+
+    await expect(
+      bootstrapWorkspace({
+        environment: fixture.environment,
+        runCommand: successfulRunner(),
+      }),
+    ).rejects.toThrow();
+
+    await expect(readlink(current)).resolves.toBe('../source');
+    await expect(
+      access(join(fixture.sourceDirectory, 'package.json')),
+    ).resolves.toBeUndefined();
+  });
+
   it('builds the operations package from deployed source without repository test fixtures', async () => {
     const fixture = await createFixture();
     const repositoryRoot = resolve(import.meta.dirname, '../..');

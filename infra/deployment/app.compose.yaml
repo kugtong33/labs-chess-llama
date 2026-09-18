@@ -27,7 +27,6 @@ services:
   gateway:
     image: ${NODE_IMAGE}
     user: '1000:1000'
-    working_dir: /workspace/current
     command: [node, /workspace/current/apps/gateway/dist/main.js]
     environment:
       NODE_ENV: production

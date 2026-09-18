@@ -7,8 +7,10 @@ import {
   mkdir,
   readdir,
   readFile,
+  readlink,
   rename,
   rm,
+  rmdir,
   symlink,
 } from 'node:fs/promises';
 import { delimiter, dirname, join, relative, resolve } from 'node:path';
@@ -270,11 +272,37 @@ async function activateRelease(workspaceDirectory, releaseName) {
   );
   await symlink(join('releases', releaseName), partialCurrent);
   try {
-    await rename(partialCurrent, join(workspaceDirectory, 'current'));
+    const current = join(workspaceDirectory, 'current');
+    await prepareActivationPath(current);
+    await rename(partialCurrent, current);
   } catch (error) {
     await rm(partialCurrent, { force: true });
     throw error;
   }
+}
+
+/** @param {string} current */
+async function prepareActivationPath(current) {
+  let existing;
+  try {
+    existing = await lstat(current);
+  } catch (error) {
+    if (isMissing(error)) return;
+    throw error;
+  }
+  if (existing.isDirectory()) {
+    // Docker may have created an empty working directory before bootstrap ran.
+    // rmdir refuses non-empty directories and never follows symlinks.
+    await rmdir(current);
+    return;
+  }
+  if (existing.isSymbolicLink()) {
+    const target = await readlink(current);
+    if (/^releases\/[a-zA-Z0-9][a-zA-Z0-9._-]*$/u.test(target)) return;
+  }
+  throw new Error(
+    `Refusing to replace unexpected workspace activation path: ${current}`,
+  );
 }
 
 /** @param {string} releasesDirectory @param {string} activeReleaseName */

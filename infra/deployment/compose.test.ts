@@ -8,6 +8,7 @@ interface Service {
   build?: unknown;
   command: string[];
   entrypoint?: string[];
+  working_dir?: string;
   environment: Record<string, string>;
   ports?: { host_ip: string; published: string; target: number }[];
   volumes: {
@@ -54,6 +55,14 @@ function config(overrides: Record<string, string> = {}): ComposeConfig {
 }
 
 describe('deployment Compose configuration', () => {
+  it('does not precreate the workspace activation target while creating containers', () => {
+    for (const service of Object.values(config().services)) {
+      expect(service.working_dir ?? '').not.toMatch(
+        /^\/workspace\/current(?:\/|$)/u,
+      );
+    }
+  });
+
   it('discovers the root project and resolves all five public digest-pinned services', () => {
     const deployment = config();
     expect(deployment.name).toBe('chess-llama');
