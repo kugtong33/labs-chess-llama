@@ -8,6 +8,8 @@ import {
 
 export type TraceOutputFormat = 'human' | 'json';
 
+const MAX_SEEN_IDS = 200;
+
 interface SseFrame {
   id: string | undefined;
   event: string | undefined;
@@ -18,6 +20,7 @@ export async function* parseTraceStream(
   source: AsyncIterable<string | Uint8Array>,
 ): AsyncGenerator<DecisionTraceEvent> {
   const seenIds = new Set<string>();
+  const recentIds: string[] = [];
   const decoder = new StringDecoder('utf8');
   let remainder = '';
   let frame: SseFrame = emptyFrame();
@@ -47,6 +50,11 @@ export async function* parseTraceStream(
       );
 
     seenIds.add(frame.id);
+    recentIds.push(frame.id);
+    if (recentIds.length > MAX_SEEN_IDS) {
+      const expired = recentIds.shift();
+      if (expired !== undefined) seenIds.delete(expired);
+    }
     frame = emptyFrame();
     return parsed.data;
   };

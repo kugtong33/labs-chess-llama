@@ -98,6 +98,21 @@ describe('trace stream formatter', () => {
     ).rejects.toThrow(`Duplicate decision trace event ID: ${event.id}`);
   });
 
+  it('bounds duplicate suppression to the gateway retained event window', async () => {
+    const events = Array.from({ length: 201 }, (_, index) => ({
+      ...event,
+      id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+      sequence: index + 1,
+    }));
+
+    const parsed = await collect(
+      parseTraceStream(Readable.from([...events.map(frame), frame(events[0])])),
+    );
+
+    expect(parsed).toHaveLength(202);
+    expect(parsed.at(-1)?.id).toBe(events[0]?.id);
+  });
+
   it('finishes cleanly when the stream ends after complete frames', async () => {
     const output: string[] = [];
 
