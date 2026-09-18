@@ -20,7 +20,7 @@ export interface SelectMoveRequest {
   commentaryStyle: CommentaryStyle;
   modelProfileId: string;
   signal?: AbortSignal;
-  onProgress?: (event: SelectMoveProgressEvent) => void;
+  onProgress?: (event: SelectMoveProgressEvent) => void | Promise<void>;
 }
 
 export interface InferenceMetrics {

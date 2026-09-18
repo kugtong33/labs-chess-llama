@@ -198,7 +198,9 @@ describe('llama.cpp HTTP boundary', () => {
       await expect(
         client.selectMove({
           ...request,
-          onProgress: (event) => progress.push(event),
+          onProgress: (event) => {
+            progress.push(event);
+          },
         }),
       ).resolves.toMatchObject({ retryCount: 1 });
 
