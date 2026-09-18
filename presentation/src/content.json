@@ -1,0 +1,205 @@
+{
+  "title": "Local LLMs: My 8GB VRAM vs the World",
+  "subtitle": "From centralized AI to models you can own",
+  "presenter": "Presenter · Organization · Date",
+  "slides": [
+    {
+      "number": 1,
+      "kind": "title",
+      "title": "Local LLMs: My 8GB VRAM vs the World",
+      "subtitle": "From centralized AI to models you can own",
+      "notes": "Welcome the audience. The claim is not that an 8 GB GPU defeats every cloud system. The claim is that useful language-model capability has become personal, programmable, and ownable. Preview the historical comparison and the live chess demonstration."
+    },
+    {
+      "number": 2,
+      "kind": "teaser",
+      "eyebrow": "A MODEL IS ALREADY PLAYING ON THIS LAPTOP",
+      "title": "Your machine. Your model. Your move.",
+      "body": "Stockfish proposes credible moves. Qwen3-4B chooses one through llama.cpp—and explains it without sending the game away.",
+      "metrics": ["Qwen3-4B", "Q4_K_M", "RTX 4060", "Local only"],
+      "notes": "Give only a 30-second teaser. Point out that the model is local and the full decision pipeline will be demonstrated later. Do not begin the live demo yet."
+    },
+    {
+      "number": 3,
+      "kind": "comparison",
+      "eyebrow": "THE CURRENT STATE",
+      "title": "Two useful tiers—not one winner",
+      "leftTitle": "Hosted frontier",
+      "leftPoints": ["Maximum general capability", "Large-scale tools and context", "Someone else runs the infrastructure"],
+      "rightTitle": "Local / open-weight",
+      "rightPoints": ["Private and offline workflows", "Control over model and runtime", "Fast, bounded, repeatable tasks"],
+      "footer": "Local complements cloud. The job decides the tool.",
+      "notes": "Stanford's 2026 AI Index reported a 3.3% gap between the top closed and top open model in March 2026. Benchmarks are incomplete and local models are usually smaller than the best open models. Use the number only to establish that open models are credible, not identical. Define open-weight: downloadable weights under a model-specific license. It is not automatically the same as open-source software.",
+      "sources": ["https://hai.stanford.edu/ai-index/2026-ai-index-report/technical-performance"]
+    },
+    {
+      "number": 4,
+      "kind": "photo",
+      "eyebrow": "BEFORE COMPUTING BECAME PERSONAL",
+      "title": "Capability arrived before accessibility",
+      "body": "ENIAC filled a room. Programming it meant physically reconfiguring the machine.",
+      "asset": "eniac.png",
+      "credit": "U.S. Army, 1946 · Public domain",
+      "notes": "ENIAC predates the mainframe category, so call it a room-scale centralized-computing precursor. Name the women shown: Ester Gerston and Gloria Gordon Bolotsky. The useful parallel is centralized access—not a claim that ENIAC and an LLM are the same technology."
+    },
+    {
+      "number": 5,
+      "kind": "photo-network",
+      "eyebrow": "THE MAINFRAME ERA",
+      "title": "One powerful machine. Many users.",
+      "body": "Access was shared, scheduled, and mediated by an institution.",
+      "asset": "ibm-2030.jpg",
+      "credit": "Warren K. Leffler / Library of Congress, 1967 · Public domain",
+      "notes": "The photograph shows several people around an IBM System/360 Model 30 in New Haven. The terminal diagram illustrates time-sharing: many users interact with one centralized computer. Hosted AI has a similar access pattern, although modern infrastructure is distributed."
+    },
+    {
+      "number": 6,
+      "kind": "photo",
+      "eyebrow": "THE PERSONAL-COMPUTER SHIFT",
+      "title": "Ownership changed who could experiment",
+      "body": "The Kenbak-1 was one of the earliest commercial personal computers. The revolution was not only smaller hardware—it was direct access.",
+      "asset": "kenbak1.jpg",
+      "credit": "Kathryn Greenhill · CC BY-SA 2.0",
+      "notes": "The Computer History Museum dates the first Kenbak-1 sale to 1971 and calls it one of the earliest personal computers. Avoid declaring an undisputed single first PC. The PC did not eliminate centralized computing; it created a complementary personal layer.",
+      "sources": ["https://www.computerhistory.org/timeline/computers/"]
+    },
+    {
+      "number": 7,
+      "kind": "timeline",
+      "eyebrow": "THE TIMELINES RHYME",
+      "title": "Decades in computing. Years in language models.",
+      "computing": [
+        ["1946", "ENIAC"],
+        ["1960s", "Mainframes + time-sharing"],
+        ["1971", "Kenbak-1"],
+        ["1981", "IBM PC"]
+      ],
+      "languageModels": [
+        ["2017", "Transformer"],
+        ["2022", "Hosted chat goes mainstream"],
+        ["2023", "Open weights + local runtimes"],
+        ["Today", "A model on your laptop"]
+      ],
+      "footer": "A lens, not a prediction: personal and centralized computing coexist.",
+      "notes": "The Transformer was introduced in 2017. ChatGPT launched publicly in November 2022. Open-weight releases and local runtimes expanded rapidly in 2023. The time scales differ dramatically, and history does not guarantee the same market outcome.",
+      "sources": ["https://research.google/pubs/attention-is-all-you-need/", "https://openai.com/index/chatgpt/"]
+    },
+    {
+      "number": 8,
+      "kind": "benefits",
+      "eyebrow": "WHAT MOVES ONTO YOUR MACHINE",
+      "title": "A new layer of personal computing",
+      "benefits": [
+        ["Privacy", "Inputs can stay on-device"],
+        ["Control", "Choose the model, version, and rules"],
+        ["Offline", "Work after the model is downloaded"],
+        ["Latency", "No network round trip"],
+        ["Cost", "No per-request API bill"],
+        ["Learning", "Inspect the whole application stack"]
+      ],
+      "caveat": "Local is not automatically private: the surrounding app must avoid cloud calls too.",
+      "notes": "Balance each benefit with constraints: smaller models, finite memory, energy use, setup, maintenance, and model-specific licenses. Hugging Face describes privacy, speed, control, and cost as advantages of local apps."
+    },
+    {
+      "number": 9,
+      "kind": "quantization",
+      "eyebrow": "QUANTIZATION",
+      "title": "Pack the model into a smaller suitcase",
+      "body": "Store each learned number with fewer bits. The model gets smaller and often faster—with some quality trade-off.",
+      "levels": [
+        ["FP16", "16 bits", "Largest"],
+        ["Q8", "≈ 8 bits", "Half-ish"],
+        ["Q4", "≈ 4 bits", "Quarter-ish"]
+      ],
+      "footer": "Raw weight math is simple. Real memory also includes metadata, context, and runtime buffers.",
+      "notes": "Quantization is lossy numerical representation, not magical compression. Four-bit weights require roughly one quarter of the raw weight storage of 16-bit weights, but quantization metadata and runtime allocations mean total memory is not exactly one quarter. Q4_K_M uses mixed block quantization intended to preserve important weights better than a naive uniform four-bit scheme."
+    },
+    {
+      "number": 10,
+      "kind": "ecosystem",
+      "eyebrow": "THE LOCAL ECOSYSTEM",
+      "title": "Library → package → engine → easy launcher",
+      "steps": [
+        ["Hugging Face", "Find and distribute models", "hugging-face.svg"],
+        ["GGUF", "Portable model file + metadata", null],
+        ["llama.cpp", "Run efficiently on CPU or GPU", "llama-cpp.svg"],
+        ["Ollama", "Friendly install, pull, and serve", "ollama.svg"]
+      ],
+      "footer": "An open ecosystem—not one interchangeable license.",
+      "notes": "Hugging Face is a collaboration and distribution platform. GGUF is a model container format. llama.cpp is an MIT-licensed inference runtime. Ollama is an MIT-licensed application built around a simple local workflow. Model weights retain their own licenses; avoid calling every model open source.",
+      "sources": ["https://huggingface.co/docs/hub/local-apps", "https://huggingface.co/docs/hub/gguf"]
+    },
+    {
+      "number": 11,
+      "kind": "interface",
+      "eyebrow": "LLAMA.CPP",
+      "title": "A model file becomes a local service",
+      "command": "llama-server -m model.gguf -ngl 99",
+      "flow": ["GGUF model", "llama.cpp", "Local HTTP API", "Your application"],
+      "footer": "CLI for people. API for programs. The same model stays on your machine.",
+      "notes": "llama.cpp is a runtime rather than a single graphical interface. It provides command-line tools and an OpenAI-compatible local server, and supports several CPU and GPU backends. In Chess Llama the server is bound to localhost and runs in a CUDA container."
+    },
+    {
+      "number": 12,
+      "kind": "pipeline",
+      "eyebrow": "CONTROLLED DELEGATION",
+      "title": "Constrain creativity. Keep authority in code.",
+      "steps": [
+        ["1", "Stockfish", "Proposes up to 5 credible legal moves"],
+        ["2", "Qwen3-4B", "Makes the stochastic choice + commentary"],
+        ["3", "Gateway", "Validates schema, candidate, and game state"],
+        ["4", "SQLite", "Saves the move and visible evidence"]
+      ],
+      "footer": "The model chooses every AI move. It cannot invent an illegal one.",
+      "notes": "Stockfish searches briefly on the CPU. The best move is always retained; alternatives are included only when close enough. Qwen is sampled at temperature 0.2 and must select from a JSON Schema enum. The gateway validates the answer independently. There is one retry, but no random or silent engine fallback. This showcases useful stochastic judgment inside a deterministic safety envelope."
+    },
+    {
+      "number": 13,
+      "kind": "demo",
+      "eyebrow": "LIVE ON AN RTX 4060",
+      "title": "Watch one local decision travel through the stack",
+      "checklist": ["Model: Qwen3-4B", "Quantization: Q4_K_M", "Backend: CUDA", "GPU memory: 8 GB", "Network: not required after setup"],
+      "watch": ["Candidate moves", "Chosen move", "Commentary", "Latency", "Tokens / second"],
+      "notes": "Before presenting, run ./chess-llama doctor, load the model, and start the application. If all artifacts are cached and venue projection is independent of Wi-Fi, disconnect Wi-Fi before the move. Make one normal opening move. Narrate Request → Gateway → Stockfish → Llama → Saved. Point to model identity, Q4_K_M, CUDA, candidates, choice, commentary, latency, and tokens per second. If inference fails, use the embedded completed-decision visual and explain the resumable awaiting_ai state.",
+      "sources": ["https://www.nvidia.com/en-us/geforce/news/ultimate-guide-to-4060/"]
+    },
+    {
+      "number": 14,
+      "kind": "closing",
+      "eyebrow": "THE OPPORTUNITY IS OWNERSHIP",
+      "title": "Start with one bounded task",
+      "points": ["Use cloud models when maximum capability matters.", "Use local models when privacy, control, latency, or learning matters.", "Build systems that decide what the model may decide."],
+      "footer": "The future is hybrid—and part of it fits in 8 GB.",
+      "notes": "Return to the thesis: local models are not a universal replacement. Their potential is that developers and students can own an increasingly useful layer of computation. End on the concrete invitation to choose one bounded task and try it locally."
+    },
+    {
+      "number": 15,
+      "kind": "sources",
+      "title": "Sources",
+      "sections": [
+        ["State of AI", "Stanford HAI · 2026 AI Index, Technical Performance"],
+        ["History", "Computer History Museum · Timeline of Computer History"],
+        ["Milestones", "Google Research · Attention Is All You Need; OpenAI · Introducing ChatGPT"],
+        ["Local stack", "Hugging Face GGUF + Local Apps; llama.cpp server docs"],
+        ["Hardware", "NVIDIA · GeForce RTX 4060 specifications"],
+        ["Demo", "Chess Llama repository architecture and runtime manifest"]
+      ],
+      "notes": "Appendix slide. All links are embedded in the corresponding slide notes and in the presentation README. Facts and current-state figures were checked on 18 September 2026."
+    },
+    {
+      "number": 16,
+      "kind": "credits",
+      "title": "Image and logo credits",
+      "items": [
+        "Reprogramming ENIAC · U.S. Army / ARL Technical Library · Public domain",
+        "IBM 2030 in New Haven · Warren K. Leffler / Library of Congress · Public domain",
+        "Kenbak-1 · Kathryn Greenhill · CC BY-SA 2.0 · cropped",
+        "Hugging Face logo · official Hugging Face brand asset",
+        "llama.cpp logo · ggml-org llama.brand · CC BY-NC 4.0 + nominative-use permission",
+        "Ollama logo · Ollama repository · MIT license",
+        "Chess Llama interface preview · original vector composition for this deck"
+      ],
+      "notes": "Appendix slide. Full URLs, license links, file hashes, and alteration notes are in presentation/assets/ATTRIBUTION.md. Logos are used only to identify their projects and do not imply sponsorship or endorsement."
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+[
+  {
+    "file": "eniac.png",
+    "title": "Reprogramming ENIAC",
+    "author": "Unidentified U.S. Army photographer",
+    "source": "https://commons.wikimedia.org/wiki/File:Reprogramming_ENIAC.png",
+    "license": "Public Domain Mark 1.0 / U.S. federal government work",
+    "licenseUrl": "https://creativecommons.org/publicdomain/mark/1.0/",
+    "sha256": "3c39ad4b4ecce235aedf39d89b0249648f64b79f326ae65c38df2612058180f6",
+    "changes": "Cropped in-slide; monochrome original retained."
+  },
+  {
+    "file": "ibm-2030.jpg",
+    "title": "IBM 2030 in New Haven",
+    "author": "Warren K. Leffler",
+    "source": "https://commons.wikimedia.org/wiki/File:IBM_2030_in_New_Haven.jpg",
+    "license": "Public domain / no known copyright restrictions",
+    "licenseUrl": "https://www.loc.gov/resource/ppmsca.89395/",
+    "sha256": "afeceaad3920ff47693006ca93a007f3a8bfcf281eff24e5238ddf1d4695106e",
+    "changes": "Cropped in-slide."
+  },
+  {
+    "file": "kenbak1.jpg",
+    "title": "Kenbak-1",
+    "author": "Kathryn Greenhill",
+    "source": "https://commons.wikimedia.org/wiki/File:Kenbak1.jpg",
+    "license": "CC BY-SA 2.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0/",
+    "sha256": "c48c38d6b7bde1239a406c72ee62f9093c115df399e34b818f7cd28c8112abc9",
+    "changes": "Cropped and contrast-adjusted by the presentation layout."
+  },
+  {
+    "file": "hugging-face.svg",
+    "title": "Hugging Face logo with title",
+    "author": "Hugging Face",
+    "source": "https://huggingface.co/brand",
+    "license": "Official brand asset; nominative identification use",
+    "licenseUrl": "https://huggingface.co/brand",
+    "sha256": "fc95837e1bacb9b2cdbff9ae5d681ed8f20233b8fc72a65cdb38321ea9ddc015",
+    "changes": "Scaled without alteration."
+  },
+  {
+    "file": "llama-cpp.svg",
+    "title": "llama.cpp logo",
+    "author": "ggml-org",
+    "source": "https://github.com/ggml-org/llama.brand",
+    "license": "CC BY-NC 4.0 with additional nominative-use permission",
+    "licenseUrl": "https://github.com/ggml-org/llama.brand/blob/master/BRAND-USAGE.md",
+    "sha256": "b8e565de5203bb1ebebcf6e8e98aec5d76af1c90c2eca1b548b551297871bc46",
+    "changes": "Scaled without alteration."
+  },
+  {
+    "file": "ollama.svg",
+    "title": "Ollama logo",
+    "author": "Ollama contributors",
+    "source": "https://github.com/ollama/ollama/blob/main/docs/ollama-logo.svg",
+    "license": "MIT",
+    "licenseUrl": "https://github.com/ollama/ollama/blob/main/LICENSE",
+    "sha256": "397a6ee071cce1496edd8a86dd1c91ce005712ec161690e411b3dc7f151181f5",
+    "changes": "Scaled without alteration."
+  }
+]
