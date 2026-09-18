@@ -67,19 +67,68 @@ describe('public contracts', () => {
 
   it.each([
     ['client', 'move_submitted', 'completed', {}],
-    ['gateway', 'ai_turn_started', 'running', {}],
+    [
+      'gateway',
+      'ai_turn_started',
+      'running',
+      { fen: 'fen', sanHistory: ['e4'], candidateLimit: 5, moveTimeMs: 100 },
+    ],
+    [
+      'stockfish',
+      'analysis_completed',
+      'completed',
+      {
+        candidates: [
+          {
+            rank: 1,
+            uci: 'e7e5',
+            san: 'e5',
+            score: { type: 'cp', value: 20 },
+            normalizedScore: 20,
+          },
+        ],
+      },
+    ],
     [
       'stockfish',
       'analysis_started',
       'running',
       { candidateLimit: 5, moveTimeMs: 100 },
     ],
-    ['llama', 'attempt_started', 'running', { attempt: 0 }],
+    [
+      'llama',
+      'attempt_started',
+      'running',
+      {
+        attempt: 0,
+        profileId: 'profile',
+        candidates: [{ rank: 1, uci: 'e7e5', san: 'e5' }],
+      },
+    ],
+    [
+      'llama',
+      'selection_completed',
+      'completed',
+      {
+        selectedMove: 'e7e5',
+        commentary: 'Central control.',
+        modelId: 'model',
+        retryCount: 0,
+        latencyMs: 25,
+        promptTokens: null,
+        completionTokens: null,
+        tokensPerSecond: null,
+      },
+    ],
     [
       'storage',
       'decision_persisted',
       'completed',
-      { decisionId: 'aaf18ea8-7ece-4999-95ce-319e3a75e920' },
+      {
+        decisionId: 'aaf18ea8-7ece-4999-95ce-319e3a75e920',
+        moveId: 'aaf18ea8-7ece-4999-95ce-319e3a75e921',
+        chosenUci: 'e7e5',
+      },
     ],
   ] as const)(
     'accepts the curated %s layer variant',
@@ -118,13 +167,17 @@ describe('public contracts', () => {
       stage: 'attempt_started',
       status: 'running',
       summary: 'Requesting a model selection.',
-      data: { attempt: 0 },
+      data: {
+        attempt: 0,
+        profileId: 'profile',
+        candidates: [{ rank: 1, uci: 'e7e5', san: 'e5' }],
+      },
     };
 
     expect(() =>
       DecisionTraceEventSchema.parse({
         ...event,
-        data: { attempt: 0, prompt: 'never expose this' },
+        data: { ...event.data, prompt: 'never expose this' },
       }),
     ).toThrow();
     expect(() =>

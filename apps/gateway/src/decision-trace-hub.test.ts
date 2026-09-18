@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { DecisionTraceEvent } from '@chess-llama/contracts';
 
 import { DecisionTraceHub } from './decision-trace-hub.js';
 
@@ -17,7 +18,11 @@ function event(overrides: Record<string, unknown> = {}) {
     stage: 'attempt_started' as const,
     status: 'running' as const,
     summary: 'Requesting a model selection.',
-    data: { attempt: 0 as const },
+    data: {
+      attempt: 0 as const,
+      profileId: 'profile',
+      candidates: [{ rank: 1, uci: 'e7e5', san: 'e5' }],
+    },
     ...overrides,
   };
 }
@@ -27,7 +32,7 @@ describe('DecisionTraceHub', () => {
     const hub = new DecisionTraceHub();
 
     const first = hub.publish(event());
-    const second = hub.publish(event({ data: { attempt: 1 } }));
+    const second = hub.publish(event());
 
     if (first === null || second === null) throw new Error('Expected trace');
 
@@ -69,7 +74,11 @@ describe('DecisionTraceHub', () => {
         layer: 'storage',
         stage: 'decision_persisted',
         status: 'completed',
-        data: { decisionId: '2b546572-0003-49e5-b55c-dbc8e3818fa2' },
+        data: {
+          decisionId: '2b546572-0003-49e5-b55c-dbc8e3818fa2',
+          moveId: '2b546572-0003-49e5-b55c-dbc8e3818fa3',
+          chosenUci: 'e7e5',
+        },
       }),
     );
 
@@ -82,10 +91,10 @@ describe('DecisionTraceHub', () => {
   it('replays matching buffered events and stops after unsubscribe', () => {
     const hub = new DecisionTraceHub();
     hub.publish(event());
-    const listener = vi.fn();
+    const listener = vi.fn<(event: DecisionTraceEvent) => void>();
 
     const unsubscribe = hub.subscribe({ gameId: gameOne }, listener);
-    hub.publish(event({ data: { attempt: 1 } }));
+    hub.publish(event());
     unsubscribe();
     hub.publish(event());
 

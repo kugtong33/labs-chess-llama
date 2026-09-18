@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { randomUUID } from 'node:crypto';
 
 import type { Color, GameResult, Settings } from '@chess-llama/contracts';
 import type {
@@ -23,16 +24,16 @@ import type {
 
 import { GameLock } from './game-lock.js';
 import { GameService } from './game-service.js';
+import { DecisionTraceHub } from './decision-trace-hub.js';
 
 const INITIAL_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
 class MemoryGames implements GameRepository {
   readonly records = new Map<string, GameAggregate>();
-  private sequence = 0;
   constructor(private readonly events: string[] = []) {}
 
   create(input: { humanColor: Color; modelProfileId: string }): GameAggregate {
-    const id = `game-${++this.sequence}`;
+    const id = randomUUID();
     const now = Date.now();
     const game: GameAggregate = {
       id,
@@ -67,6 +68,11 @@ class MemoryGames implements GameRepository {
     return [...this.records.values()].map((game) => this.copy(game));
   }
 
+  listAiDecisions(id: string): StoredAiDecision[] {
+    const decision = this.getRequired(id).lastAiDecision;
+    return decision === null ? [] : [decision];
+  }
+
   recordHumanMove(
     gameId: string,
     move: PersistableMove,
@@ -99,7 +105,7 @@ class MemoryGames implements GameRepository {
     this.events.push(`record-ai:${move.uci}`);
     const game = this.getRequired(gameId);
     const storedDecision: StoredAiDecision = {
-      id: decision.id ?? `decision-${game.moves.length + 1}`,
+      id: decision.id ?? randomUUID(),
       moveId: move.id,
       candidates: decision.candidates,
       chosenUci: decision.chosenUci,
@@ -210,6 +216,7 @@ class FakeSelector implements MoveSelector {
   error: Error | undefined;
   selectedUci: string;
   gate: Promise<void> | undefined;
+  retry = false;
   constructor(events: string[], selectedUci: string) {
     this.events = events;
     this.selectedUci = selectedUci;
@@ -224,6 +231,15 @@ class FakeSelector implements MoveSelector {
     });
   }
   async selectMove(request: SelectMoveRequest): Promise<MoveSelection> {
+    request.onProgress?.({ type: 'attempt_started', attempt: 0 });
+    if (this.retry) {
+      request.onProgress?.({
+        type: 'retry_scheduled',
+        attempt: 1,
+        reason: 'timeout',
+      });
+      request.onProgress?.({ type: 'attempt_started', attempt: 1 });
+    }
     this.events.push(
       `select-llama:${request.candidates.map((candidate) => candidate.uci).join(',')}`,
     );
@@ -237,7 +253,7 @@ class FakeSelector implements MoveSelector {
       promptTokens: 10,
       completionTokens: 4,
       tokensPerSecond: 20,
-      retryCount: 0,
+      retryCount: this.retry ? 1 : 0,
     };
   }
 }
@@ -278,7 +294,9 @@ function createServiceHarness(
   );
   const selector = new FakeSelector(events, options.selectedUci ?? 'e7e5');
   selector.error = options.selectError;
+  const traceHub = new DecisionTraceHub();
   return {
+    traceHub,
     events,
     games,
     stockfish,
@@ -289,11 +307,180 @@ function createServiceHarness(
       stockfish,
       selector,
       lock: new GameLock(),
+      traceHub,
     }),
   };
 }
 
 describe('GameService', () => {
+  it('exposes stored decision history with public dates and missing-game errors', async () => {
+    const { service } = createServiceHarness();
+    const game = await service.createGame({ humanColor: 'white' });
+    expect(await service.listAiDecisions(game.id)).toEqual([]);
+    const moved = await service.submitHumanMove(game.id, {
+      from: 'e2',
+      to: 'e4',
+      expectedPly: 0,
+    });
+    expect(await service.listAiDecisions(game.id)).toEqual([
+      moved.lastAiDecision,
+    ]);
+    await expect(service.listAiDecisions(randomUUID())).rejects.toMatchObject({
+      code: 'GAME_NOT_FOUND',
+    });
+  });
+  it('publishes the five-layer success sequence with curated evidence and correlation', async () => {
+    const { service, traceHub } = createServiceHarness();
+    const context = { traceId: randomUUID(), requestId: 'req-test' };
+    const game = await service.createGame({ humanColor: 'white' });
+    const moved = await service.submitHumanMove(
+      game.id,
+      { from: 'e2', to: 'e4', expectedPly: 0 },
+      undefined,
+      context,
+    );
+    const events = traceHub.snapshot({});
+    expect(events.map((event) => `${event.layer}.${event.stage}`)).toEqual([
+      'client.move_submitted',
+      'gateway.ai_turn_started',
+      'stockfish.analysis_started',
+      'stockfish.analysis_completed',
+      'llama.attempt_started',
+      'llama.selection_completed',
+      'storage.decision_persisted',
+      'gateway.ai_turn_completed',
+    ]);
+    expect(
+      events.every(
+        (event) =>
+          event.traceId === context.traceId &&
+          event.requestId === 'req-test' &&
+          event.gameId === game.id &&
+          event.ply === 2,
+      ),
+    ).toBe(true);
+    expect(events[1]?.data).toEqual({
+      fen: moved.moves[0]?.fenAfter,
+      sanHistory: ['e4'],
+      candidateLimit: 2,
+      moveTimeMs: 100,
+    });
+    expect(events[3]?.data).toEqual({
+      candidates: moved.lastAiDecision?.candidates,
+    });
+    expect(events[4]?.data).toEqual({
+      attempt: 0,
+      profileId: 'default-profile',
+      candidates: [
+        { rank: 1, uci: 'e7e5', san: 'e5' },
+        { rank: 2, uci: 'c7c5', san: 'c5' },
+      ],
+    });
+    expect(events[5]?.data).toEqual({
+      selectedMove: 'e7e5',
+      commentary: 'A sound developing move.',
+      modelId: 'test-model',
+      retryCount: 0,
+      latencyMs: 2,
+      promptTokens: 10,
+      completionTokens: 4,
+      tokensPerSecond: 20,
+    });
+    expect(events[6]?.data).toEqual({
+      decisionId: moved.lastAiDecision?.id,
+      moveId: moved.lastAiDecision?.moveId,
+      chosenUci: 'e7e5',
+    });
+  });
+
+  it('publishes retries before the second attempt and survives failed observers', async () => {
+    const { service, selector, traceHub } = createServiceHarness();
+    selector.retry = true;
+    traceHub.subscribe({}, () => {
+      throw new Error('disconnected');
+    });
+    const game = await service.createGame({ humanColor: 'white' });
+    const moved = await service.submitHumanMove(game.id, {
+      from: 'e2',
+      to: 'e4',
+      expectedPly: 0,
+    });
+    expect(moved.moves).toHaveLength(2);
+    expect(
+      traceHub.snapshot({ layer: 'llama' }).map((event) => event.stage),
+    ).toEqual([
+      'attempt_started',
+      'retry_scheduled',
+      'attempt_started',
+      'selection_completed',
+    ]);
+    expect(traceHub.snapshot({ layer: 'llama' })[1]?.data).toEqual({
+      attempt: 1,
+      reason: 'timeout',
+    });
+  });
+
+  it.each(['stockfish', 'llama', 'storage'] as const)(
+    'publishes sanitized %s failure and a terminal gateway event',
+    async (layer) => {
+      const { service, stockfish, selector, games, traceHub } =
+        createServiceHarness();
+      if (layer === 'stockfish')
+        vi.spyOn(stockfish, 'analyze').mockRejectedValue(
+          new Error('secret transcript'),
+        );
+      if (layer === 'llama') selector.error = new Error('secret prompt');
+      if (layer === 'storage')
+        vi.spyOn(games, 'recordAiMove').mockImplementation(() => {
+          throw new Error('secret db');
+        });
+      const game = await service.createGame({ humanColor: 'white' });
+      await expect(
+        service.submitHumanMove(game.id, {
+          from: 'e2',
+          to: 'e4',
+          expectedPly: 0,
+        }),
+      ).rejects.toMatchObject({ code: 'AI_UNAVAILABLE' });
+      const events = traceHub.snapshot({});
+      expect(events.slice(-2).map((event) => event.stage)).toEqual([
+        layer === 'stockfish'
+          ? 'analysis_failed'
+          : layer === 'llama'
+            ? 'selection_failed'
+            : 'decision_failed',
+        'ai_turn_failed',
+      ]);
+      expect(events.at(-1)?.data).toEqual({ reason: layer });
+      expect(JSON.stringify(events)).not.toContain('secret');
+      expect(games.getRequired(game.id).moves).toHaveLength(1);
+    },
+  );
+
+  it('ends cancelled turns with a single cancellation terminal event', async () => {
+    const { service, selector, traceHub } = createServiceHarness();
+    const controller = new AbortController();
+    selector.error = new DOMException('private detail', 'AbortError');
+    const game = await service.createGame({ humanColor: 'white' });
+    controller.abort();
+    await expect(
+      service.submitHumanMove(
+        game.id,
+        { from: 'e2', to: 'e4', expectedPly: 0 },
+        controller.signal,
+      ),
+    ).rejects.toMatchObject({ code: 'AI_UNAVAILABLE' });
+    expect(traceHub.snapshot({}).at(-1)).toMatchObject({
+      layer: 'client',
+      stage: 'request_cancelled',
+      status: 'cancelled',
+      data: {},
+    });
+    expect(
+      traceHub.snapshot({}).some((event) => event.status === 'failed'),
+    ).toBe(false);
+  });
+
   it('persists the human move before selecting and then records the LLM move', async () => {
     const harness = createServiceHarness({ selectedUci: 'e7e5' });
     const game = await harness.service.createGame({ humanColor: 'white' });

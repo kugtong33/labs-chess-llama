@@ -9,6 +9,8 @@ import {
 } from '@chess-llama/chess-domain';
 import type {
   AiMoveRequest,
+  AiDecisionView,
+  DecisionTraceEventInput,
   CreateGameRequest,
   GameView,
   ResignRequest,
@@ -25,6 +27,22 @@ import type { StockfishAnalyzer } from '@chess-llama/stockfish-adapter';
 import { GameServiceError, StalePlyError } from './errors.js';
 import { GameLock } from './game-lock.js';
 import { toGameView } from './game-view.js';
+import type { DecisionTraceHub } from './decision-trace-hub.js';
+
+export interface TraceContext {
+  traceId: string;
+  requestId: string;
+}
+
+type TraceStage = DecisionTraceEventInput extends infer Event
+  ? Event extends DecisionTraceEventInput
+    ? Pick<Event, 'layer' | 'stage' | 'status' | 'summary' | 'data'>
+    : never
+  : never;
+
+function traceContext(): TraceContext {
+  return { traceId: randomUUID(), requestId: randomUUID() };
+}
 
 export interface GameServiceDependencies {
   games: GameRepository;
@@ -32,6 +50,7 @@ export interface GameServiceDependencies {
   stockfish: StockfishAnalyzer;
   selector: MoveSelector;
   lock: GameLock;
+  traceHub?: DecisionTraceHub;
 }
 
 export class GameService {
@@ -40,6 +59,7 @@ export class GameService {
   async createGame(
     input: CreateGameRequest,
     signal?: AbortSignal,
+    context: TraceContext = traceContext(),
   ): Promise<GameView> {
     const settings = this.dependencies.settings.get();
     const game = this.dependencies.games.create({
@@ -48,7 +68,7 @@ export class GameService {
     });
     if (game.humanColor === 'black') {
       const result = await this.dependencies.lock.runExclusive(game.id, () =>
-        this.performAiTurn(game.id, 0, signal),
+        this.performAiTurn(game.id, 0, signal, context),
       );
       return toGameView(result);
     }
@@ -63,10 +83,21 @@ export class GameService {
     return Promise.resolve(toGameView(this.requireGame(id)));
   }
 
+  listAiDecisions(id: string): Promise<AiDecisionView[]> {
+    return Promise.resolve().then(() => {
+      this.requireGame(id);
+      return this.dependencies.games.listAiDecisions(id).map((decision) => ({
+        ...decision,
+        createdAt: new Date(decision.createdAt).toISOString(),
+      }));
+    });
+  }
+
   async submitHumanMove(
     id: string,
     input: SubmitMoveRequest,
     signal?: AbortSignal,
+    context: TraceContext = traceContext(),
   ): Promise<GameView> {
     return this.dependencies.lock.runExclusive(id, async () => {
       let game = this.requireGame(id);
@@ -101,7 +132,19 @@ export class GameService {
       if (applied.gameOver) {
         return toGameView(game);
       }
-      const result = await this.performAiTurn(id, game.moves.length, signal);
+      this.publish(context, id, game.moves.length + 1, {
+        layer: 'client',
+        stage: 'move_submitted',
+        status: 'completed',
+        summary: 'Human move accepted.',
+        data: {},
+      });
+      const result = await this.performAiTurn(
+        id,
+        game.moves.length,
+        signal,
+        context,
+      );
       return toGameView(result);
     });
   }
@@ -110,6 +153,7 @@ export class GameService {
     id: string,
     input: AiMoveRequest,
     signal?: AbortSignal,
+    context: TraceContext = traceContext(),
   ): Promise<GameView> {
     return this.dependencies.lock.runExclusive(id, async () => {
       const game = this.requireGame(id);
@@ -122,7 +166,7 @@ export class GameService {
         );
       }
       return toGameView(
-        await this.performAiTurn(id, game.moves.length, signal),
+        await this.performAiTurn(id, game.moves.length, signal, context),
       );
     });
   }
@@ -197,6 +241,7 @@ export class GameService {
     id: string,
     expectedPly: number,
     signal?: AbortSignal,
+    context: TraceContext = traceContext(),
   ): Promise<GameAggregate> {
     let game = this.requireGame(id);
     this.assertExpected(game, expectedPly);
@@ -207,10 +252,36 @@ export class GameService {
         game.status,
       );
     }
+    const publish = (event: TraceStage) =>
+      this.publish(context, id, expectedPly + 1, event);
+    let phase: 'stockfish' | 'llama' | 'storage' | 'unknown' = 'unknown';
     try {
       const settings = this.dependencies.settings.get();
+      publish({
+        layer: 'gateway',
+        stage: 'ai_turn_started',
+        status: 'running',
+        summary: 'AI turn started.',
+        data: {
+          fen: game.currentFen,
+          sanHistory: game.moves.map((move) => move.san),
+          candidateLimit: settings.stockfishCandidateLimit,
+          moveTimeMs: settings.stockfishMoveTimeMs,
+        },
+      });
       const chess = reconstructGame(toUciMoves(game));
       const legal = legalMoves(chess);
+      phase = 'stockfish';
+      publish({
+        layer: 'stockfish',
+        stage: 'analysis_started',
+        status: 'running',
+        summary: 'Ranking legal moves.',
+        data: {
+          candidateLimit: settings.stockfishCandidateLimit,
+          moveTimeMs: settings.stockfishMoveTimeMs,
+        },
+      });
       const candidates = await this.dependencies.stockfish.analyze({
         fen: game.currentFen,
         legalMoves: legal,
@@ -222,17 +293,57 @@ export class GameService {
       const validCandidates = candidates.slice(0, 5);
       if (validCandidates.length === 0)
         throw new Error('Stockfish returned no legal candidates');
+      publish({
+        layer: 'stockfish',
+        stage: 'analysis_completed',
+        status: 'completed',
+        summary: 'Legal candidates ranked.',
+        data: {
+          candidates: validCandidates.map(
+            ({ rank, uci, san, score, normalizedScore }) => ({
+              rank,
+              uci,
+              san,
+              score: { type: score.type, value: score.value },
+              normalizedScore,
+            }),
+          ),
+        },
+      });
+      phase = 'llama';
+      const constrainedCandidates = validCandidates.map(
+        ({ rank, uci, san }) => ({ rank, uci, san }),
+      );
       const selection = await this.dependencies.selector.selectMove({
         fen: game.currentFen,
         sanHistory: game.moves.map((move) => move.san),
-        candidates: validCandidates.map((candidate) => ({
-          rank: candidate.rank,
-          uci: candidate.uci,
-          san: candidate.san,
-        })),
+        candidates: constrainedCandidates,
         commentaryStyle: settings.commentaryStyle,
         modelProfileId: game.modelProfileId,
         signal,
+        onProgress: (event) => {
+          if (event.type === 'attempt_started') {
+            publish({
+              layer: 'llama',
+              stage: 'attempt_started',
+              status: 'running',
+              summary: 'Requesting a constrained model selection.',
+              data: {
+                attempt: event.attempt,
+                profileId: game.modelProfileId,
+                candidates: constrainedCandidates,
+              },
+            });
+          } else {
+            publish({
+              layer: 'llama',
+              stage: 'retry_scheduled',
+              status: 'retrying',
+              summary: 'Retrying model selection.',
+              data: { attempt: event.attempt, reason: event.reason },
+            });
+          }
+        },
       });
       if (signal?.aborted)
         throw signal.reason ?? new DOMException('Aborted', 'AbortError');
@@ -258,6 +369,23 @@ export class GameService {
           { cause: error },
         );
       }
+      publish({
+        layer: 'llama',
+        stage: 'selection_completed',
+        status: 'completed',
+        summary: 'Model selected a legal candidate.',
+        data: {
+          selectedMove: selection.uci,
+          commentary: selection.commentary,
+          modelId: selection.modelId,
+          retryCount: selection.retryCount,
+          latencyMs: selection.latencyMs,
+          promptTokens: selection.promptTokens,
+          completionTokens: selection.completionTokens,
+          tokensPerSecond: selection.tokensPerSecond,
+        },
+      });
+      phase = 'storage';
       game = this.dependencies.games.recordAiMove(
         id,
         {
@@ -285,8 +413,72 @@ export class GameService {
         },
         applied.gameOver ? applied.result : undefined,
       );
+      if (game.lastAiDecision !== null) {
+        publish({
+          layer: 'storage',
+          stage: 'decision_persisted',
+          status: 'completed',
+          summary: 'AI move and decision saved.',
+          data: {
+            decisionId: game.lastAiDecision.id,
+            moveId: game.lastAiDecision.moveId,
+            chosenUci: game.lastAiDecision.chosenUci,
+          },
+        });
+      }
+      publish({
+        layer: 'gateway',
+        stage: 'ai_turn_completed',
+        status: 'completed',
+        summary: 'AI turn completed.',
+        data: { selectedMove: selection.uci },
+      });
       return game;
     } catch (error) {
+      if (
+        signal?.aborted ||
+        (error instanceof Error && error.name === 'AbortError')
+      ) {
+        publish({
+          layer: 'client',
+          stage: 'request_cancelled',
+          status: 'cancelled',
+          summary: 'AI request cancelled.',
+          data: {},
+        });
+      } else {
+        if (phase === 'stockfish')
+          publish({
+            layer: 'stockfish',
+            stage: 'analysis_failed',
+            status: 'failed',
+            summary: 'Candidate analysis failed.',
+            data: {},
+          });
+        if (phase === 'llama')
+          publish({
+            layer: 'llama',
+            stage: 'selection_failed',
+            status: 'failed',
+            summary: 'Model selection failed.',
+            data: { reason: selectionFailureReason(error) },
+          });
+        if (phase === 'storage')
+          publish({
+            layer: 'storage',
+            stage: 'decision_failed',
+            status: 'failed',
+            summary: 'Decision persistence failed.',
+            data: {},
+          });
+        publish({
+          layer: 'gateway',
+          stage: 'ai_turn_failed',
+          status: 'failed',
+          summary: 'AI turn failed; the game can be retried.',
+          data: { reason: phase },
+        });
+      }
       if (error instanceof GameServiceError && error.code === 'AI_INVALID_MOVE')
         throw error;
       throw new GameServiceError(
@@ -297,6 +489,40 @@ export class GameService {
       );
     }
   }
+
+  private publish(
+    context: TraceContext,
+    gameId: string,
+    ply: number,
+    event: TraceStage,
+  ): void {
+    try {
+      this.dependencies.traceHub?.publish({
+        schemaVersion: 1,
+        ...context,
+        gameId,
+        ply,
+        ...event,
+      });
+    } catch {
+      // Observability must never change the result of a move.
+    }
+  }
+}
+
+function selectionFailureReason(
+  error: unknown,
+): 'timeout' | 'http' | 'invalid_completion' | 'transport' {
+  if (error instanceof Error) {
+    if (error.name === 'TimeoutError') return 'timeout';
+    if (error.name === 'HttpError') return 'http';
+    if (
+      error.name === 'InvalidCompletionError' ||
+      (error instanceof GameServiceError && error.code === 'AI_INVALID_MOVE')
+    )
+      return 'invalid_completion';
+  }
+  return 'transport';
 }
 
 function toUciMoves(game: GameAggregate): UciMove[] {

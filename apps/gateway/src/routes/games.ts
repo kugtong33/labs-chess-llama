@@ -1,7 +1,9 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
   AiMoveRequestSchema,
+  AiDecisionViewSchema,
   CreateGameRequestSchema,
   GameListResponseSchema,
   GameViewSchema,
@@ -74,6 +76,7 @@ export function registerGameRoutes(
       service.createGame(
         CreateGameRequestSchema.parse(request.body ?? {}),
         signal,
+        { traceId: randomUUID(), requestId: request.id },
       ),
     );
     return reply.code(201).send(parseView(game));
@@ -82,12 +85,21 @@ export function registerGameRoutes(
   app.get('/api/games/:id', async (request) =>
     parseView(await service.getGame(idFrom(request))),
   );
+  app.get('/api/games/:id/decisions', async (request) => {
+    const decisions = await service.listAiDecisions(idFrom(request));
+    try {
+      return z.array(AiDecisionViewSchema).parse(decisions);
+    } catch {
+      throw invalidDependencyResponse();
+    }
+  });
   app.post('/api/games/:id/moves', async (request, reply) => {
     const game = await withAbort(reply, (signal) =>
       service.submitHumanMove(
         idFrom(request),
         SubmitMoveRequestSchema.parse(request.body),
         signal,
+        { traceId: randomUUID(), requestId: request.id },
       ),
     );
     return parseView(game);
@@ -98,6 +110,7 @@ export function registerGameRoutes(
         idFrom(request),
         AiMoveRequestSchema.parse(request.body),
         signal,
+        { traceId: randomUUID(), requestId: request.id },
       ),
     );
     return parseView(game);

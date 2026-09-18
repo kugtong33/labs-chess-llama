@@ -4,6 +4,7 @@ import { GameService } from './game-service.js';
 import { GameLock } from './game-lock.js';
 import { parseGatewayConfig } from './config.js';
 import { buildApp } from './app.js';
+import { DecisionTraceHub } from './decision-trace-hub.js';
 import { LlamaCppClient } from '@chess-llama/llama-protocol';
 import { StockfishJsAnalyzer } from '@chess-llama/stockfish-adapter';
 import {
@@ -109,17 +110,20 @@ export async function startGateway(): Promise<void> {
     const settings = createSettingsRepository(database);
     stockfish = await StockfishJsAnalyzer.create();
     const selector = new LlamaCppClient({ baseUrl: config.llamaBaseUrl });
+    const traceHub = new DecisionTraceHub();
     const service = new GameService({
       games,
       settings,
       stockfish,
       selector,
       lock: new GameLock(),
+      traceHub,
     });
     const app = buildApp({
       service,
       settings,
       config,
+      traceHub,
       cleanup: closeResources,
       health: {
         database: () => ({ status: 'ready' }),

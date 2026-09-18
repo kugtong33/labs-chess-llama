@@ -65,6 +65,7 @@ const app = buildApp({
     databasePath: join(temporaryRoot, 'chess-llama.sqlite'),
     llamaBaseUrl: `http://${host}:${llamaPort}`,
     logLevel: 'warn',
+    demoTrace: false,
   },
   health: {
     database: () => ({ status: 'ready' }),

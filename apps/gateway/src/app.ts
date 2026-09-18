@@ -10,6 +10,8 @@ import { registerGameRoutes } from './routes/games.js';
 import { registerHealthRoute } from './routes/health.js';
 import { registerSettingsRoutes } from './routes/settings.js';
 import type { GameService } from './game-service.js';
+import type { DecisionTraceHub } from './decision-trace-hub.js';
+import { registerDemoEventRoutes } from './routes/demo-events.js';
 
 export interface HealthDependencies {
   database: () => ComponentHealth | Promise<ComponentHealth>;
@@ -23,6 +25,7 @@ export interface GatewayDependencies {
   health: HealthDependencies;
   config: GatewayConfig;
   selector?: MoveSelector;
+  traceHub?: DecisionTraceHub;
   cleanup?: () => void | Promise<void>;
 }
 
@@ -39,10 +42,25 @@ export function buildApp(dependencies: GatewayDependencies): FastifyInstance {
       ],
     },
   });
+  const unsubscribeTraceLog = dependencies.traceHub?.subscribe({}, (event) => {
+    app.log.info(
+      {
+        layer: event.layer,
+        traceId: event.traceId,
+        requestId: event.requestId,
+        gameId: event.gameId,
+        ply: event.ply,
+        stage: event.stage,
+        status: event.status,
+      },
+      event.summary,
+    );
+  });
   let cleanedUp = false;
   app.addHook('onClose', async () => {
     if (cleanedUp) return;
     cleanedUp = true;
+    unsubscribeTraceLog?.();
     await dependencies.cleanup?.();
   });
   void app.register(cors, {
@@ -65,6 +83,9 @@ export function buildApp(dependencies: GatewayDependencies): FastifyInstance {
   void registerHealthRoute(app, dependencies.health);
   void registerSettingsRoutes(app, dependencies.settings);
   void registerGameRoutes(app, dependencies.service);
+  if (dependencies.config.demoTrace && dependencies.traceHub) {
+    registerDemoEventRoutes(app, dependencies.traceHub);
+  }
   return app;
 }
 

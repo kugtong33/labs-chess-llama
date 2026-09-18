@@ -1,4 +1,9 @@
 import { z } from 'zod';
+import {
+  AiDecisionViewSchema,
+  CandidateViewSchema,
+  UciSchema,
+} from './game.js';
 
 export const DecisionTraceLayerSchema = z.enum([
   'client',
@@ -60,7 +65,14 @@ export const DecisionTraceEventSchema = z.discriminatedUnion('stage', [
     z.literal('gateway'),
     z.literal('ai_turn_started'),
     z.literal('running'),
-    EmptyDataSchema,
+    z
+      .object({
+        fen: z.string().min(1),
+        sanHistory: z.array(z.string().min(1)),
+        candidateLimit: z.number().int().positive(),
+        moveTimeMs: z.number().int().positive(),
+      })
+      .strict(),
   ),
   traceVariant(
     z.literal('gateway'),
@@ -95,7 +107,9 @@ export const DecisionTraceEventSchema = z.discriminatedUnion('stage', [
     z.literal('stockfish'),
     z.literal('analysis_completed'),
     z.literal('completed'),
-    z.object({ candidateCount: z.number().int().nonnegative() }).strict(),
+    z
+      .object({ candidates: z.array(CandidateViewSchema).min(1).max(5) })
+      .strict(),
   ),
   traceVariant(
     z.literal('stockfish'),
@@ -107,7 +121,16 @@ export const DecisionTraceEventSchema = z.discriminatedUnion('stage', [
     z.literal('llama'),
     z.literal('attempt_started'),
     z.literal('running'),
-    z.object({ attempt: z.union([z.literal(0), z.literal(1)]) }).strict(),
+    z
+      .object({
+        attempt: z.union([z.literal(0), z.literal(1)]),
+        profileId: z.string().min(1),
+        candidates: z
+          .array(CandidateViewSchema.pick({ rank: true, uci: true, san: true }))
+          .min(1)
+          .max(5),
+      })
+      .strict(),
   ),
   traceVariant(
     z.literal('llama'),
@@ -123,6 +146,12 @@ export const DecisionTraceEventSchema = z.discriminatedUnion('stage', [
       .object({
         selectedMove: z.string().regex(/^[a-h][1-8][a-h][1-8][qrbn]?$/),
         retryCount: z.union([z.literal(0), z.literal(1)]),
+        commentary: AiDecisionViewSchema.shape.commentary,
+        modelId: AiDecisionViewSchema.shape.modelId,
+        latencyMs: AiDecisionViewSchema.shape.latencyMs,
+        promptTokens: AiDecisionViewSchema.shape.promptTokens,
+        completionTokens: AiDecisionViewSchema.shape.completionTokens,
+        tokensPerSecond: AiDecisionViewSchema.shape.tokensPerSecond,
       })
       .strict(),
   ),
@@ -136,7 +165,13 @@ export const DecisionTraceEventSchema = z.discriminatedUnion('stage', [
     z.literal('storage'),
     z.literal('decision_persisted'),
     z.literal('completed'),
-    z.object({ decisionId: z.string().uuid() }).strict(),
+    z
+      .object({
+        decisionId: z.string().uuid(),
+        moveId: z.string().uuid(),
+        chosenUci: UciSchema,
+      })
+      .strict(),
   ),
   traceVariant(
     z.literal('storage'),
