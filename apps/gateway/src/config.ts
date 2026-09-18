@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const GatewayConfigSchema = z
   .object({
-    host: z.literal('127.0.0.1').default('127.0.0.1'),
+    host: z.enum(['127.0.0.1', '0.0.0.0']).default('127.0.0.1'),
     port: z.coerce.number().int().min(1024).max(65535).default(3001),
     clientOrigin: z.string().url().default('http://127.0.0.1:5173'),
     databasePath: z.string().min(1),

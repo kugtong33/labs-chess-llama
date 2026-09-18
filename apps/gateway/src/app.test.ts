@@ -723,12 +723,12 @@ describe('Fastify gateway API', () => {
     expect(databaseCloseCalls).toBe(1);
   });
 
-  it('defaults to loopback-only configuration and rejects non-loopback hosts', () => {
+  it('defaults to loopback configuration and rejects arbitrary interface addresses', () => {
     expect(parseGatewayConfig({ DATABASE_PATH: ':memory:' }).host).toBe(
       '127.0.0.1',
     );
     expect(() =>
-      parseGatewayConfig({ HOST: '0.0.0.0', DATABASE_PATH: ':memory:' }),
+      parseGatewayConfig({ HOST: '192.168.1.10', DATABASE_PATH: ':memory:' }),
     ).toThrow();
   });
 });

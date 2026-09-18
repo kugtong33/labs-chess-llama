@@ -1,0 +1,62 @@
+services:
+  model-bootstrap:
+    image: ${NODE_IMAGE}
+    user: '0:0'
+    command: [node, /source/infra/deployment/model-bootstrap.mjs]
+    environment:
+      MODEL_PROFILE_ID: ${MODEL_PROFILE_ID}
+      RUNTIME_MANIFEST_PATH: /source/config/runtime-manifest.json
+      MODEL_DIRECTORY: /models
+    volumes:
+      - .:/source:ro
+      - models:/models
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    init: true
+    tmpfs: [/tmp]
+
+  llama:
+    image: ${LLAMA_IMAGE}
+    entrypoint: [/app/llama-server]
+    command:
+      - --model
+      - /models/current.gguf
+      - --host
+      - 0.0.0.0
+      - --port
+      - '8080'
+      - --ctx-size
+      - ${MODEL_CONTEXT_SIZE}
+      - --n-gpu-layers
+      - ${MODEL_GPU_LAYERS}
+      - --flash-attn
+      - 'on'
+      - --parallel
+      - '1'
+      - --alias
+      - ${MODEL_PROFILE_ID}
+      - --no-webui
+    gpus: all
+    ports:
+      - '127.0.0.1:${MODEL_PORT}:8080'
+    volumes:
+      - models:/models:ro
+    depends_on:
+      model-bootstrap:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [CMD, /usr/bin/curl, --fail, --silent, 'http://127.0.0.1:8080/health']
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    init: true
+    tmpfs: [/tmp]
+
+volumes:
+  models:
