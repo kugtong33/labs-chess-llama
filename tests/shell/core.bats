@@ -7,7 +7,7 @@ load test_helper
 
   [ "$status" -eq 0 ]
   assert_output_contains "local hybrid chess gateway and runtime"
-  for namespace in client db dev doctor gateway model; do
+  for namespace in client db dev doctor gateway logs model; do
     assert_output_contains "$namespace"
   done
   assert_output_contains "--verbose"
@@ -132,6 +132,13 @@ load test_helper
 
   [ "$status" -eq 0 ]
   assert_output_contains "Usage: chess-llama model"
+}
+
+@test "logs help routes to the unified follower namespace" {
+  run --separate-stderr "$PROJECT_ROOT/chess-llama" help logs
+
+  [ "$status" -eq 0 ]
+  assert_output_contains "Usage: chess-llama logs follow"
 }
 
 @test "missing compiled operations are prerequisite failures" {

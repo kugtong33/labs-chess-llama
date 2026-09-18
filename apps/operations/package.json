@@ -7,7 +7,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup src/benchmark.ts src/database.ts src/runtime.ts --format esm",
+    "build": "tsup src/benchmark.ts src/database.ts src/runtime.ts src/trace-stream.ts --format esm",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

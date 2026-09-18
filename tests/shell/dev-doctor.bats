@@ -218,6 +218,45 @@ EOF
   assert_stderr_contains "[ERROR] dev: managed service exited service=gateway exitCode=17"
 }
 
+@test "dev enables decision tracing by default and honors an explicit zero" {
+  local trace=$TEST_ROOT/dev-trace
+  run --separate-stderr bash -c '
+    set -Eeuo pipefail
+    CHESS_LLAMA_PROJECT_ROOT=$1
+    CHESS_LLAMA_TEST_TRACE=$2
+    source "$1/scripts/cli/core.sh"
+    chess_llama_doctor_main() { printf "%s\n" "{\"ok\":true,\"prerequisitesOk\":true,\"checks\":[]}"; }
+    chess_llama_database_main() { :; }
+    chess_llama_model_status() { printf "%s\n" "{\"healthy\":true}"; }
+    curl() { return 22; }
+    ss() { return 1; }
+    setsid() { printf "trace=%s\n" "$CHESS_LLAMA_DEMO_TRACE" >>"$CHESS_LLAMA_TEST_TRACE"; sleep 0.1; return 17; }
+    chess_llama_dev_main
+  ' _ "$PROJECT_ROOT" "$trace"
+
+  [ "$status" -eq 17 ]
+  [ "$(head -1 "$trace")" = 'trace=1' ]
+  assert_stderr_contains "[INFO] dev: decision trace endpoint enabled"
+
+  CHESS_LLAMA_DEMO_TRACE=0 run --separate-stderr bash -c '
+    set -Eeuo pipefail
+    CHESS_LLAMA_PROJECT_ROOT=$1
+    CHESS_LLAMA_TEST_TRACE=$2
+    source "$1/scripts/cli/core.sh"
+    chess_llama_doctor_main() { printf "%s\n" "{\"ok\":true,\"prerequisitesOk\":true,\"checks\":[]}"; }
+    chess_llama_database_main() { :; }
+    chess_llama_model_status() { printf "%s\n" "{\"healthy\":true}"; }
+    curl() { return 22; }
+    ss() { return 1; }
+    setsid() { printf "trace=%s\n" "$CHESS_LLAMA_DEMO_TRACE" >"$CHESS_LLAMA_TEST_TRACE"; sleep 0.1; return 17; }
+    chess_llama_dev_main
+  ' _ "$PROJECT_ROOT" "$trace"
+
+  [ "$status" -eq 17 ]
+  [ "$(cat "$trace")" = 'trace=0' ]
+  assert_stderr_contains "[INFO] dev: decision trace endpoint disabled"
+}
+
 @test "dev isolates children and terminates process groups in reverse order" {
   local dev_source client_prefix gateway_prefix
   dev_source=$(<"$PROJECT_ROOT/scripts/cli/dev.sh")

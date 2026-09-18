@@ -17,6 +17,8 @@ source "$CHESS_LLAMA_PROJECT_ROOT/scripts/cli/client.sh"
 source "$CHESS_LLAMA_PROJECT_ROOT/scripts/cli/database.sh"
 # shellcheck source=scripts/cli/gateway.sh
 source "$CHESS_LLAMA_PROJECT_ROOT/scripts/cli/gateway.sh"
+# shellcheck source=scripts/cli/logs.sh
+source "$CHESS_LLAMA_PROJECT_ROOT/scripts/cli/logs.sh"
 # shellcheck source=scripts/cli/model.sh
 source "$CHESS_LLAMA_PROJECT_ROOT/scripts/cli/model.sh"
 # shellcheck source=scripts/cli/doctor.sh
@@ -36,6 +38,7 @@ Commands:
   dev                start the local development stack
   doctor             check local prerequisites
   gateway            manage the gateway
+  logs               follow curated decision traces
   model              manage the local model
   help [command]     display help for command
 
@@ -93,6 +96,10 @@ chess_llama_main() {
     gateway)
       shift
       chess_llama_gateway_main "$@"
+      ;;
+    logs)
+      shift
+      chess_llama_logs_main "$@"
       ;;
     db)
       shift

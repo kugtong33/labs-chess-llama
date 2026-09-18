@@ -62,6 +62,14 @@ chess_llama_dev_main() {
   chess_llama_info dev 'preparing database' database "$CHESS_LLAMA_DATABASE_FILE"
   chess_llama_database_main migrate || return $?
 
+  if [[ ${CHESS_LLAMA_DEMO_TRACE:-} == 0 ]]; then
+    chess_llama_info dev 'decision trace endpoint disabled' url http://127.0.0.1:3001/api/demo/events
+  else
+    CHESS_LLAMA_DEMO_TRACE=1
+    export CHESS_LLAMA_DEMO_TRACE
+    chess_llama_info dev 'decision trace endpoint enabled' url http://127.0.0.1:3001/api/demo/events
+  fi
+
   CHESS_LLAMA_DEV_MODEL_OWNED=false
   CHESS_LLAMA_DEV_GATEWAY_PID=''
   CHESS_LLAMA_DEV_CLIENT_PID=''
