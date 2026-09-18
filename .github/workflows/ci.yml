@@ -23,8 +23,19 @@ jobs:
       - name: Enable pinned pnpm with Corepack
         run: |
           corepack enable
-          corepack prepare pnpm@11.5.1 --activate
+          package_manager="$(node -p "JSON.parse(require('node:fs').readFileSync('package.json', 'utf8')).packageManager")"
+          case "$package_manager" in
+            pnpm@*) ;;
+            *)
+              echo "Root package.json must declare a pnpm packageManager; found: $package_manager" >&2
+              exit 1
+              ;;
+          esac
+          corepack prepare "$package_manager" --activate
           echo "PNPM_STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+
+      - name: Validate root Compose deployment config
+        run: docker compose --env-file .env -f docker.compose.yaml config --quiet
 
       - name: Cache pnpm store
         uses: actions/cache@v4
@@ -86,22 +97,65 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  container-security:
+  prepare-runtime-images:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    outputs:
+      images: ${{ steps.runtime-images.outputs.images }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Read pinned runtime image
-        id: runtime
-        run: |
-          node -e "const fs=require('node:fs'); console.log('image='+JSON.parse(fs.readFileSync('config/runtime-manifest.json','utf8')).image)" >> "$GITHUB_OUTPUT"
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
 
-      - name: Scan pinned llama.cpp image
+      - name: Read unique runtime images from root environment
+        id: runtime-images
+        run: |
+          node --input-type=module <<'NODE' >> "$GITHUB_OUTPUT"
+          import { readFileSync } from 'node:fs';
+
+          const requiredKeys = ['NODE_IMAGE', 'NGINX_IMAGE', 'LLAMA_IMAGE'];
+          const environment = new Map();
+          for (const line of readFileSync('.env', 'utf8').split(/\r?\n/u)) {
+            const trimmed = line.trim();
+            if (trimmed === '' || trimmed.startsWith('#')) continue;
+            const separator = trimmed.indexOf('=');
+            if (separator < 1) throw new Error(`Invalid .env entry: ${line}`);
+            const key = trimmed.slice(0, separator);
+            const value = trimmed.slice(separator + 1);
+            if (environment.has(key)) {
+              throw new Error(`Duplicate .env entry for ${key}`);
+            }
+            environment.set(key, value);
+          }
+
+          const images = requiredKeys.map((key) => {
+            const image = environment.get(key);
+            if (!image) throw new Error(`Missing ${key} in .env`);
+            if (!/^(docker\.io|ghcr\.io)\/.+@sha256:[a-f0-9]{64}$/u.test(image)) {
+              throw new Error(`${key} must be a direct public digest-pinned image`);
+            }
+            return image;
+          });
+          console.log(`images=${JSON.stringify([...new Set(images)])}`);
+          NODE
+
+  container-security:
+    needs: prepare-runtime-images
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.prepare-runtime-images.outputs.images) }}
+    steps:
+      - name: Scan pinned runtime image
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: ${{ steps.runtime.outputs.image }}
+          image-ref: ${{ matrix.image }}
           format: table
           exit-code: '1'
           ignore-unfixed: true

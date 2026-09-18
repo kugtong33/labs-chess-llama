@@ -16,6 +16,37 @@ Default loopback services are:
 
 Do not change the gateway host to `0.0.0.0`; the MVP is intentionally local-only.
 
+## Compose deployment lifecycle
+
+The Compose deployment is a separate, local-only runtime. From the repository root, its exact one-command start is:
+
+```bash
+docker compose up -d
+```
+
+The first start pulls the digest-pinned public images, verifies/downloads the GGUF, and builds a workspace release; inspect completion and health with `docker compose ps`. The client, gateway, and model are at `http://127.0.0.1:5173`, `http://127.0.0.1:3001/api/health`, and `http://127.0.0.1:8080/health`. Bootstrap services may show `exited (0)` after successful completion.
+
+Use per-service logs when an image pull, bootstrap, GPU startup, or health check fails:
+
+```bash
+docker compose logs --tail=200 model-bootstrap
+docker compose logs --tail=200 workspace-bootstrap
+docker compose logs --tail=200 llama
+docker compose logs --tail=200 gateway
+docker compose logs --tail=200 client
+```
+
+Do not run Compose beside `./chess-llama dev` or native client/gateway/model commands: the modes conflict on ports `5173`, `3001`, and `8080`. Native CLI state remains in the XDG paths below; Compose owns separate Docker named volumes for SQLite, models, workspace releases, and the pnpm store.
+
+For an ordinary restart or source update, use the data-preserving lifecycle:
+
+```bash
+docker compose down
+docker compose up -d
+```
+
+`docker compose down` preserves named volumes and therefore retained games/settings. `docker compose down -v` is destructive and removes all Compose-managed data, including the SQLite database and GGUF weights. For failed bootstraps, inspect `docker compose ps --all`, the two bootstrap logs, and `docker compose config --quiet`; fix the reported issue and retry the non-destructive lifecycle. See [deployment.md](deployment.md) for the Linux/WSL2/NVIDIA prerequisites, volume inspection, full recovery guidance, and the real-GPU persistence smoke procedure.
+
 ## Complete CLI reference
 
 | Command | Behavior |

@@ -57,6 +57,18 @@ Open <http://127.0.0.1:5173>. Press Ctrl-C once to stop the client, gateway, and
 
 `./chess-llama ...` is the public Bash control plane and works from any current directory when invoked by absolute path or a user-managed symlink. `pnpm chess-llama -- ...` remains a compatibility wrapper. Examples include `./chess-llama client dev`, `./chess-llama gateway start`, and `./chess-llama model status`.
 
+## Container deployment
+
+With Docker Compose and NVIDIA container GPU support installed, start the separate local deployment from the repository root with:
+
+```bash
+docker compose up -d
+```
+
+The first start pulls the pinned images, verifies/downloads the GGUF, and builds the application workspace. Inspect it with `docker compose ps`; open <http://127.0.0.1:5173>, and query the gateway and model at `http://127.0.0.1:3001/api/health` and `http://127.0.0.1:8080/health`.
+
+Compose and `./chess-llama dev` cannot run at the same time because both own ports `5173`, `3001`, and `8080`. Compose keeps its SQLite data, model, workspace, and pnpm named volumes separate from native CLI XDG data. Use `docker compose down` for a normal, data-preserving stop; `docker compose down -v` intentionally removes all Compose-managed data. See [docs/deployment.md](docs/deployment.md) for prerequisites, per-service logs, bootstrap recovery, updates, and persistence verification.
+
 ## Model profiles
 
 - `qwen3-4b-q4-k-m` is the default: Qwen3-4B Q4_K_M, selected as the smallest currently recommended profile for credible constrained choices and short commentary on the RTX 4060.
@@ -84,11 +96,11 @@ pnpm notices
 git diff --exit-code THIRD_PARTY_NOTICES.md
 ```
 
-Normal CI uses a deterministic fake llama.cpp HTTP server and temporary SQLite database. It requires no Docker, GPU, network model download, or model weights. Real RTX 4060 qualification is a separate, documented acceptance run.
+Normal CI uses a deterministic fake llama.cpp HTTP server and temporary SQLite database. The deployment configuration tests require the Docker Compose CLI, but CI requires no GPU, network model download, or model weights. Real RTX 4060 qualification is a separate, documented acceptance run.
 
-CI also rejects unreviewed production licenses and high-severity production dependency findings, then scans the digest-pinned llama.cpp image for high and critical OS/library vulnerabilities.
+CI also rejects unreviewed production licenses and high-severity production dependency findings, validates the root Compose configuration, and scans every unique digest-pinned runtime image declared in `.env` for high and critical OS/library vulnerabilities.
 
-See [docs/operations.md](docs/operations.md) for lifecycle, backup/restore, troubleshooting, paths, and teardown.
+See [docs/operations.md](docs/operations.md) for native CLI lifecycle, backup/restore, troubleshooting, paths, and teardown, and [docs/deployment.md](docs/deployment.md) for Compose operations.
 
 ## License
 
