@@ -355,7 +355,7 @@ function notifyProgress(
   event: SelectMoveProgressEvent,
 ): void {
   try {
-    request.onProgress?.(event);
+    void Promise.resolve(request.onProgress?.(event)).catch(() => undefined);
   } catch {
     // Observers are diagnostic only and cannot change move selection.
   }

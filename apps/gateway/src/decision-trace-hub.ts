@@ -23,13 +23,16 @@ export class DecisionTraceHub {
   private readonly subscriptions = new Set<Subscription>();
   private nextSequence = 0;
 
-  publish(input: DecisionTraceEventInput): DecisionTraceEvent {
-    const event = DecisionTraceEventSchema.parse({
+  publish(input: DecisionTraceEventInput): DecisionTraceEvent | null {
+    const parsed = DecisionTraceEventSchema.safeParse({
       ...input,
       id: randomUUID(),
       sequence: this.nextSequence,
       timestamp: new Date().toISOString(),
     });
+    if (!parsed.success) return null;
+
+    const event = parsed.data;
     this.nextSequence += 1;
     this.events.push(event);
     if (this.events.length > MAX_EVENTS) this.events.shift();

@@ -29,10 +29,22 @@ describe('DecisionTraceHub', () => {
     const first = hub.publish(event());
     const second = hub.publish(event({ data: { attempt: 1 } }));
 
+    if (first === null || second === null) throw new Error('Expected trace');
+
     expect(first.id).toMatch(/^[0-9a-f-]{36}$/);
     expect(second.id).not.toBe(first.id);
     expect([first.sequence, second.sequence]).toEqual([0, 1]);
     expect(first.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('drops invalid publication without interrupting later valid work', () => {
+    const hub = new DecisionTraceHub();
+
+    expect(hub.publish(event({ summary: 'x'.repeat(241) }))).toBeNull();
+    const valid = hub.publish(event());
+
+    expect(valid).toMatchObject({ sequence: 0 });
+    expect(hub.snapshot({})).toHaveLength(1);
   });
 
   it('keeps only the latest 200 events', () => {

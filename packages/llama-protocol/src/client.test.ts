@@ -211,6 +211,30 @@ describe('llama.cpp HTTP boundary', () => {
     },
   );
 
+  it.each([
+    [
+      'synchronously',
+      () => {
+        throw new Error('observer failed');
+      },
+    ],
+    ['asynchronously', () => Promise.reject(new Error('observer failed'))],
+  ])(
+    'continues move selection when progress observation fails %s',
+    async (_delivery, onProgress) => {
+      const fetcher = vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(
+          completion(JSON.stringify({ move: 'e7e5', commentary: 'Develops.' })),
+        );
+      const client = new LlamaCppClient({ fetch: fetcher });
+
+      await expect(
+        client.selectMove({ ...request, onProgress }),
+      ).resolves.toMatchObject({ uci: 'e7e5' });
+    },
+  );
+
   it('retries a network timeout once and then surfaces the timeout', async () => {
     const fetcher = vi
       .fn<typeof fetch>()
