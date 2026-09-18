@@ -8,6 +8,7 @@ export default tseslint.config(
       '**/dist/**',
       '**/coverage/**',
       '**/playwright-report/**',
+      'presentation/**',
       '**/test-results/**',
       '.worktrees/**',
       '.superpowers/**',
