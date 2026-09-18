@@ -17,13 +17,16 @@ export function DecisionPipeline({
   events,
   decision,
   connection,
+  replay = false,
 }: {
   events: DecisionTraceEvent[];
   decision: AiDecisionView | null;
   connection: DecisionConnection;
+  replay?: boolean;
 }) {
-  const candidates = candidatesFrom(events, decision);
-  const latest = events.at(-1);
+  const displayedEvents = replay ? [] : events;
+  const candidates = candidatesFrom(displayedEvents, decision);
+  const latest = displayedEvents.at(-1);
   return (
     <section
       className="panel decision-pipeline"
@@ -35,7 +38,9 @@ export function DecisionPipeline({
       </div>
       <ol className="pipeline-stages" aria-label="Five decision stages">
         {stages.map(([layer, label]) => {
-          const layerEvents = events.filter((event) => event.layer === layer);
+          const layerEvents = displayedEvents.filter(
+            (event) => event.layer === layer,
+          );
           const status = layerEvents.at(-1)?.status ?? 'waiting';
           return (
             <li key={layer} data-status={status}>
@@ -87,7 +92,7 @@ export function DecisionPipeline({
       <details className="pipeline-details">
         <summary>Technical details</summary>
         <ul>
-          {events.map((event) => (
+          {displayedEvents.map((event) => (
             <li key={event.id}>
               {event.timestamp} · {event.layer} · {event.stage} ·{' '}
               {event.summary}

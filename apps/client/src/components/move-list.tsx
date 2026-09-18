@@ -33,7 +33,12 @@ export function MoveList({
           {rows.map((row) => (
             <li key={row.number}>
               <span>{row.number}.</span>
-              <strong>{row.white?.san ?? '…'}</strong>
+              {moveCell(
+                row.white,
+                decisions,
+                selectedDecisionId,
+                onSelectDecision,
+              )}
               {moveCell(
                 row.black,
                 decisions,

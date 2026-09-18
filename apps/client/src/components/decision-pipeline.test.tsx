@@ -1,14 +1,16 @@
 // @vitest-environment jsdom
 
 import '@testing-library/jest-dom/vitest';
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
 import type {
   AiDecisionView,
   DecisionTraceEvent,
 } from '@chess-llama/contracts';
 
 import { DecisionPipeline } from './decision-pipeline.js';
+
+afterEach(cleanup);
 
 const event = {
   schemaVersion: 1,
@@ -59,6 +61,27 @@ const decision: AiDecisionView = {
 };
 
 describe('DecisionPipeline', () => {
+  it('uses persisted decision data rather than current live events in replay mode', () => {
+    render(
+      <DecisionPipeline
+        events={[
+          {
+            ...event,
+            data: {
+              ...event.data,
+              candidates: [{ rank: 1, uci: 'c7c5', san: 'c5' }],
+            },
+          },
+        ]}
+        decision={decision}
+        connection="connected"
+        replay
+      />,
+    );
+    expect(screen.getByText('e5')).toBeVisible();
+    expect(screen.queryByText('c5')).not.toBeInTheDocument();
+  });
+
   it('shows live stages, ranked candidates, retry state, selection, and technical details', () => {
     render(
       <DecisionPipeline

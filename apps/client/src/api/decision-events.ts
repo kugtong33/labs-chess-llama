@@ -46,14 +46,17 @@ export function useDecisionEvents(
     enabled && url ? 'connecting' : 'disabled',
   );
   const eventSourceFactory = useRef(createEventSource);
+  const activeUrl = useRef(url);
 
   useEffect(() => {
+    activeUrl.current = url;
     if (!enabled || !url) {
       setConnection('disabled');
       setEvents([]);
       return;
     }
     setConnection('connecting');
+    setEvents([]);
     const seen = new Set<string>();
     let source: DecisionEventSource;
     try {
@@ -65,12 +68,18 @@ export function useDecisionEvents(
     const onOpen = () => setConnection('connected');
     const onError = () => setConnection('disconnected');
     const onTrace = (message: Event) => {
-      const payload = message instanceof MessageEvent ? message.data : '';
+      const payload: unknown =
+        message instanceof MessageEvent ? message.data : '';
       if (typeof payload !== 'string') return;
       const event = parseDecisionTraceEvent(payload);
       if (event === null || seen.has(event.id)) return;
       seen.add(event.id);
-      setEvents((current) => [...current, event].slice(-maxEvents));
+      setEvents((current) => {
+        const next = [...current, event].slice(-maxEvents);
+        seen.clear();
+        for (const retained of next) seen.add(retained.id);
+        return next;
+      });
     };
     source.addEventListener('open', onOpen);
     source.addEventListener('error', onError);
@@ -83,7 +92,7 @@ export function useDecisionEvents(
     };
   }, [enabled, maxEvents, url]);
 
-  return { events, connection };
+  return { events: activeUrl.current === url ? events : [], connection };
 }
 
 function defaultEventSource(url: string): DecisionEventSource {

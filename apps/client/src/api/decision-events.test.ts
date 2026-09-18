@@ -118,4 +118,78 @@ describe('decision event adapter', () => {
       events: [],
     });
   });
+
+  it('clears traces and starts a bounded dedupe window when the game URL changes', async () => {
+    const first = new FakeEventSource();
+    const second = new FakeEventSource();
+    const sources = [first, second];
+    const { result, rerender } = renderHook(
+      ({ url }) =>
+        useDecisionEvents(url, {
+          createEventSource: () => sources.shift()!,
+          maxEvents: 2,
+        }),
+      { initialProps: { url: 'http://gateway/events?gameId=first' } },
+    );
+    await waitFor(() =>
+      expect(first.listeners.get('decision-trace')?.size).toBe(1),
+    );
+    first.emit('decision-trace', JSON.stringify(event));
+    await waitFor(() => expect(result.current.events).toHaveLength(1));
+
+    rerender({ url: 'http://gateway/events?gameId=second' });
+    await waitFor(() => expect(result.current.events).toEqual([]));
+    expect(first.closed).toBe(true);
+    await waitFor(() =>
+      expect(second.listeners.get('decision-trace')?.size).toBe(1),
+    );
+    second.emit(
+      'decision-trace',
+      JSON.stringify({ ...event, id: '44444444-4444-4444-8444-444444444444' }),
+    );
+    await waitFor(() => expect(result.current.events).toHaveLength(1));
+  });
+
+  it('retains dedupe IDs only for the bounded visible event history', async () => {
+    const source = new FakeEventSource();
+    const { result } = renderHook(() =>
+      useDecisionEvents('http://gateway/events', {
+        createEventSource: () => source,
+        maxEvents: 2,
+      }),
+    );
+    await waitFor(() =>
+      expect(source.listeners.get('decision-trace')?.size).toBe(1),
+    );
+    const second = {
+      ...event,
+      id: '44444444-4444-4444-8444-444444444444',
+      sequence: 2,
+    };
+    const third = {
+      ...event,
+      id: '55555555-5555-4555-8555-555555555555',
+      sequence: 3,
+    };
+    source.emit('decision-trace', JSON.stringify(event));
+    source.emit('decision-trace', JSON.stringify(second));
+    source.emit('decision-trace', JSON.stringify(third));
+    await waitFor(() =>
+      expect(result.current.events.map(({ sequence }) => sequence)).toEqual([
+        2, 3,
+      ]),
+    );
+    source.emit('decision-trace', JSON.stringify(third));
+    await waitFor(() =>
+      expect(result.current.events.map(({ sequence }) => sequence)).toEqual([
+        2, 3,
+      ]),
+    );
+    source.emit('decision-trace', JSON.stringify(event));
+    await waitFor(() =>
+      expect(result.current.events.map(({ sequence }) => sequence)).toEqual([
+        3, 1,
+      ]),
+    );
+  });
 });

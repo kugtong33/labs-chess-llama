@@ -57,9 +57,13 @@ describe('GatewayClient', () => {
       },
     ];
     const client = new GatewayClient('http://127.0.0.1:3001', (input) => {
-      expect(String(input)).toBe(
-        `http://127.0.0.1:3001/api/games/${game.id}/decisions`,
-      );
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      expect(url).toBe(`http://127.0.0.1:3001/api/games/${game.id}/decisions`);
       return Promise.resolve(jsonResponse(decisions));
     });
 

@@ -194,6 +194,9 @@ export function PlayRoute() {
   const selectedDecision =
     decisions.find((decision) => decision.id === selectedDecisionId) ??
     current.lastAiDecision;
+  const replayingDecision =
+    selectedDecision !== null &&
+    selectedDecision.id !== current.lastAiDecision?.id;
   const runtimeModel = health.data?.components.model;
   const pending = [create, humanMove, retryAi, resign, download].some(
     (mutation) => mutation.isPending,
@@ -264,6 +267,7 @@ export function PlayRoute() {
             events={decisionEvents.events}
             decision={selectedDecision}
             connection={decisionEvents.connection}
+            replay={replayingDecision}
           />
           <MoveList
             moves={current.moves}
