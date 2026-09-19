@@ -51,6 +51,10 @@ EOF
   printf 'placeholder\n' >"$runtime_entry"
   printf 'placeholder\n' >"$host_entry"
   make_tool node <<'EOF'
+if [[ $1 == "$CHESS_LLAMA_HOST_RUNTIME_ENTRY" && $2 == provider ]]; then
+  printf 'docker-cuda\n'
+  exit 0
+fi
 if [[ $1 == "$CHESS_LLAMA_HOST_RUNTIME_ENTRY" && $2 == install-artifact ]]; then
   printf '%s\n' "$*" >>"$CHESS_LLAMA_TEST_TRACE"
   mkdir -p "${3%/*}"
@@ -98,6 +102,10 @@ EOF
   printf 'placeholder\n' >"$runtime_entry"
   printf 'placeholder\n' >"$host_entry"
   make_tool node <<'EOF'
+if [[ $1 == "$CHESS_LLAMA_HOST_RUNTIME_ENTRY" && $2 == provider ]]; then
+  printf 'docker-cuda\n'
+  exit 0
+fi
 if [[ $1 == "$CHESS_LLAMA_HOST_RUNTIME_ENTRY" && $2 == install-artifact ]]; then
   printf 'download unavailable\n' >&2
   exit 22
@@ -140,6 +148,10 @@ EOF
   mkdir -p "$model_dir"
   printf '%s' "$CHESS_LLAMA_TEST_MODEL_BYTES" >"$model_dir/model.gguf"
   make_tool node <<'EOF'
+if [[ $1 == "$CHESS_LLAMA_HOST_RUNTIME_ENTRY" && $2 == provider ]]; then
+  printf 'docker-cuda\n'
+  exit 0
+fi
 if [[ $1 == "$CHESS_LLAMA_HOST_RUNTIME_ENTRY" && $2 == hash ]]; then
   printf '%s\n' "$*" >>"$CHESS_LLAMA_TEST_TRACE"
   printf '%s\n' "$CHESS_LLAMA_TEST_CHECKSUM"
@@ -199,12 +211,19 @@ EOF
 
 @test "model stop resolves the active model environment required by Compose" {
   local runtime_entry=$TEST_ROOT/runtime.js
+  local host_entry=$TEST_ROOT/host-runtime.js
   export CHESS_LLAMA_RUNTIME_ENTRY=$runtime_entry
+  export CHESS_LLAMA_HOST_RUNTIME_ENTRY=$host_entry
   export CHESS_LLAMA_DATABASE_ENTRY=$TEST_ROOT/missing-database.js
   export CHESS_LLAMA_MODEL_DIR=$TEST_ROOT/models
   export CHESS_LLAMA_TEST_TRACE=$TEST_ROOT/trace
   printf 'placeholder\n' >"$runtime_entry"
+  printf 'placeholder\n' >"$host_entry"
   make_tool node <<'EOF'
+if [[ $1 == "$CHESS_LLAMA_HOST_RUNTIME_ENTRY" && $2 == provider ]]; then
+  printf 'docker-cuda\n'
+  exit 0
+fi
 case "$2" in
   default-profile) printf 'test-profile\n' ;;
   profile) printf '{}\n' ;;

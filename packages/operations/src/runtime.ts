@@ -36,11 +36,14 @@ async function main(): Promise<void> {
   if (operation === 'profile-field') {
     const profile = findRuntimeProfile(manifest, process.argv[3] ?? '');
     const field = process.argv[4];
-    if (!field || !['file', 'id', 'sha256', 'url'].includes(field)) {
+    if (
+      !field ||
+      !['contextSize', 'file', 'id', 'sha256', 'url'].includes(field)
+    ) {
       throw new Error(`Unknown profile field: ${field ?? ''}`);
     }
     process.stdout.write(
-      `${String(profile[field as 'file' | 'id' | 'sha256' | 'url'])}\n`,
+      `${String(profile[field as 'contextSize' | 'file' | 'id' | 'sha256' | 'url'])}\n`,
     );
     return;
   }

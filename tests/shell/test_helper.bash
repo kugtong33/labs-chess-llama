@@ -1,6 +1,6 @@
 bats_require_minimum_version 1.5.0
 
-setup() {
+chess_llama_test_setup() {
   TEST_CALLER_DIR=$PWD
   PROJECT_ROOT=$(cd "$BATS_TEST_DIRNAME/../.." && pwd -P)
   TEST_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/chess-llama-bats.XXXXXX")
@@ -15,10 +15,15 @@ setup() {
   export XDG_DATA_HOME=$TEST_ROOT/data
   export XDG_CACHE_HOME=$TEST_ROOT/cache
   export XDG_RUNTIME_DIR=$TEST_ROOT/run
+  export XDG_STATE_HOME=$TEST_ROOT/state
   export PATH=$TEST_BIN:$TEST_NODE_BIN:/usr/bin:/bin
 
-  mkdir -p "$HOME" "$XDG_RUNTIME_DIR" "$TEST_BIN"
+  mkdir -p "$HOME" "$XDG_RUNTIME_DIR" "$XDG_STATE_HOME" "$TEST_BIN"
   cd -- "$TEST_ROOT" || return
+}
+
+setup() {
+  chess_llama_test_setup
 }
 
 teardown() {

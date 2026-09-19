@@ -21,6 +21,10 @@ source "$CHESS_LLAMA_PROJECT_ROOT/scripts/cli/database.sh"
 source "$CHESS_LLAMA_PROJECT_ROOT/scripts/cli/backend.sh"
 # shellcheck source=scripts/cli/logs.sh
 source "$CHESS_LLAMA_PROJECT_ROOT/scripts/cli/logs.sh"
+# shellcheck source=scripts/cli/model-docker.sh
+source "$CHESS_LLAMA_PROJECT_ROOT/scripts/cli/model-docker.sh"
+# shellcheck source=scripts/cli/model-native.sh
+source "$CHESS_LLAMA_PROJECT_ROOT/scripts/cli/model-native.sh"
 # shellcheck source=scripts/cli/model.sh
 source "$CHESS_LLAMA_PROJECT_ROOT/scripts/cli/model.sh"
 # shellcheck source=scripts/cli/doctor.sh

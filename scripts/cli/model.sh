@@ -114,14 +114,20 @@ chess_llama_profile_field() {
 chess_llama_model_environment() {
   local profile=$1
   chess_llama_resolve_paths
-  CHESS_LLAMA_IMAGE=$(chess_llama_runtime_image) || return
+  CHESS_LLAMA_PROVIDER=$(chess_llama_runtime_provider) || return
   CHESS_LLAMA_MODEL_FILE=$(chess_llama_profile_field "$profile" file) || return
   CHESS_LLAMA_MODEL_PORT=${CHESS_LLAMA_MODEL_PORT:-8080}
-  CHESS_LLAMA_PORT_BINDING=127.0.0.1:$CHESS_LLAMA_MODEL_PORT:8080
-  CHESS_LLAMA_GPU_REQUEST='--gpus all'
-  CHESS_LLAMA_CONTAINER=chess-llama-model
-  export CHESS_LLAMA_IMAGE CHESS_LLAMA_MODEL_FILE CHESS_LLAMA_MODEL_PORT
-  export CHESS_LLAMA_PORT_BINDING CHESS_LLAMA_GPU_REQUEST CHESS_LLAMA_CONTAINER
+  if [[ $CHESS_LLAMA_PROVIDER == docker-cuda ]]; then
+    CHESS_LLAMA_IMAGE=$(chess_llama_runtime_image) || return
+    CHESS_LLAMA_PORT_BINDING=127.0.0.1:$CHESS_LLAMA_MODEL_PORT:8080
+    CHESS_LLAMA_GPU_REQUEST='--gpus all'
+    CHESS_LLAMA_CONTAINER=chess-llama-model
+    export CHESS_LLAMA_IMAGE CHESS_LLAMA_PORT_BINDING CHESS_LLAMA_GPU_REQUEST CHESS_LLAMA_CONTAINER
+  else
+    CHESS_LLAMA_CONTEXT_SIZE=$(chess_llama_profile_field "$profile" contextSize) || return
+    export CHESS_LLAMA_CONTEXT_SIZE
+  fi
+  export CHESS_LLAMA_PROVIDER CHESS_LLAMA_MODEL_FILE CHESS_LLAMA_MODEL_PORT
 }
 
 chess_llama_compose() {
@@ -147,18 +153,18 @@ chess_llama_model_pull() {
   chess_llama_select_profile || return
   local profile=$CHESS_LLAMA_SELECTED_PROFILE
   chess_llama_model_environment "$profile" || return
-  chess_llama_info model 'selected profile' profile "$profile" source "$CHESS_LLAMA_PROFILE_SOURCE" \
-    file "$CHESS_LLAMA_MODEL_FILE" directory "$CHESS_LLAMA_MODEL_DIR" image "$CHESS_LLAMA_IMAGE"
-  chess_llama_model_lock || return
+  if [[ $CHESS_LLAMA_PROVIDER == docker-cuda ]]; then
+    chess_llama_info model 'selected profile' profile "$profile" source "$CHESS_LLAMA_PROFILE_SOURCE" \
+      file "$CHESS_LLAMA_MODEL_FILE" directory "$CHESS_LLAMA_MODEL_DIR" image "$CHESS_LLAMA_IMAGE"
+    chess_llama_model_lock || return
+  else
+    chess_llama_info model 'selected profile' profile "$profile" source "$CHESS_LLAMA_PROFILE_SOURCE" \
+      file "$CHESS_LLAMA_MODEL_FILE" directory "$CHESS_LLAMA_MODEL_DIR" provider "$CHESS_LLAMA_PROVIDER"
+  fi
   mkdir -p -- "$CHESS_LLAMA_MODEL_DIR"
-  chess_llama_info model 'building llama service image' image "$CHESS_LLAMA_IMAGE" compose "$CHESS_LLAMA_COMPOSE_FILE"
-  chess_llama_debug_command model docker compose -f "$CHESS_LLAMA_COMPOSE_FILE" build llama
-  chess_llama_compose build llama || {
-    local status=$?
-    chess_llama_error model 'llama service image build failed' image "$CHESS_LLAMA_IMAGE" exitCode "$status"
-    return "$CHESS_LLAMA_EXIT_PREREQUISITE"
-  }
-  chess_llama_ok model 'llama service image available' image "$CHESS_LLAMA_IMAGE"
+  if [[ $CHESS_LLAMA_PROVIDER == docker-cuda ]]; then
+    chess_llama_docker_model_prepare || return
+  fi
 
   local destination=$CHESS_LLAMA_MODEL_DIR/$CHESS_LLAMA_MODEL_FILE
   local expected url result status
@@ -184,10 +190,15 @@ chess_llama_model_start() {
   chess_llama_select_profile || return
   local profile=$CHESS_LLAMA_SELECTED_PROFILE
   chess_llama_model_environment "$profile" || return
-  chess_llama_info model 'starting runtime' profile "$profile" source "$CHESS_LLAMA_PROFILE_SOURCE" \
-    file "$CHESS_LLAMA_MODEL_FILE" image "$CHESS_LLAMA_IMAGE" port "$CHESS_LLAMA_MODEL_PORT" \
-    compose "$CHESS_LLAMA_COMPOSE_FILE"
-  chess_llama_model_lock || return
+  if [[ $CHESS_LLAMA_PROVIDER == docker-cuda ]]; then
+    chess_llama_info model 'starting runtime' profile "$profile" source "$CHESS_LLAMA_PROFILE_SOURCE" \
+      file "$CHESS_LLAMA_MODEL_FILE" image "$CHESS_LLAMA_IMAGE" port "$CHESS_LLAMA_MODEL_PORT" \
+      compose "$CHESS_LLAMA_COMPOSE_FILE"
+    chess_llama_model_lock || return
+  else
+    chess_llama_info model 'starting runtime' profile "$profile" source "$CHESS_LLAMA_PROFILE_SOURCE" \
+      file "$CHESS_LLAMA_MODEL_FILE" provider "$CHESS_LLAMA_PROVIDER" port "$CHESS_LLAMA_MODEL_PORT"
+  fi
   local destination=$CHESS_LLAMA_MODEL_DIR/$CHESS_LLAMA_MODEL_FILE
   local expected actual
   expected=$(chess_llama_profile_field "$profile" sha256) || return
@@ -208,18 +219,10 @@ chess_llama_model_start() {
     return "$CHESS_LLAMA_EXIT_RUNTIME"
   fi
   chess_llama_ok model 'installed weights verified' path "$destination" checksum "$actual"
-  chess_llama_info model 'recreating container' container "$CHESS_LLAMA_CONTAINER" portBinding "$CHESS_LLAMA_PORT_BINDING"
-  docker rm --force "$CHESS_LLAMA_CONTAINER" >/dev/null 2>&1 || true
-  chess_llama_debug_command model docker compose -f "$CHESS_LLAMA_COMPOSE_FILE" run --detach --no-deps \
-    --name "$CHESS_LLAMA_CONTAINER" --publish "$CHESS_LLAMA_PORT_BINDING" \
-    --volume "$destination:/models/current.gguf:ro" --env "LLAMA_PROFILE_ID=$profile" llama
-  chess_llama_compose run --detach --no-deps --name "$CHESS_LLAMA_CONTAINER" \
-    --publish "$CHESS_LLAMA_PORT_BINDING" --volume "$destination:/models/current.gguf:ro" \
-    --env "LLAMA_PROFILE_ID=$profile" llama || {
-    local status=$?
-    chess_llama_error model 'container start failed' container "$CHESS_LLAMA_CONTAINER" exitCode "$status"
-    return "$CHESS_LLAMA_EXIT_RUNTIME"
-  }
+  case "$CHESS_LLAMA_PROVIDER" in
+    docker-cuda) chess_llama_docker_model_start "$profile" "$destination" || return ;;
+    native-metal) chess_llama_native_model_start "$profile" "$destination" || return ;;
+  esac
 
   local timeout=${CHESS_LLAMA_HEALTH_TIMEOUT_SECONDS:-120}
   local deadline=$((SECONDS + timeout))
@@ -269,19 +272,18 @@ chess_llama_model_stop() {
     chess_llama_input_error "Unknown option: $1"
     return
   }
+  chess_llama_resolve_paths
+  local provider
+  provider=$(chess_llama_runtime_provider) || return "$CHESS_LLAMA_EXIT_PREREQUISITE"
+  if [[ $provider == native-metal ]]; then
+    chess_llama_native_model_stop
+    return
+  fi
   chess_llama_select_profile || return
   local profile=$CHESS_LLAMA_SELECTED_PROFILE
   chess_llama_model_environment "$profile" || return
   chess_llama_model_lock || return
-  local container=chess-llama-model
-  chess_llama_info model 'stopping runtime' container "$container" compose "$CHESS_LLAMA_COMPOSE_FILE"
-  chess_llama_debug_command model docker compose -f "$CHESS_LLAMA_COMPOSE_FILE" rm -s -f llama
-  chess_llama_compose rm -s -f llama || {
-    local status=$?
-    chess_llama_error model 'runtime stop failed' container "$container" exitCode "$status"
-    return "$CHESS_LLAMA_EXIT_PREREQUISITE"
-  }
-  chess_llama_ok model 'runtime stopped' container "$container"
+  chess_llama_docker_model_stop
 }
 
 chess_llama_model_status() {
@@ -292,45 +294,62 @@ chess_llama_model_status() {
     chess_llama_error model 'runtime provider detection failed'
     return "$CHESS_LLAMA_EXIT_PREREQUISITE"
   }
-  chess_llama_debug model 'checking runtime status' compose "$CHESS_LLAMA_COMPOSE_FILE" endpoint http://127.0.0.1:8080/v1/health
+  chess_llama_debug model 'checking runtime status' provider "$provider" endpoint http://127.0.0.1:8080/v1/health
   local runtime_state=stopped healthy=false model_id='' profile_id=''
-  local ps_output status
-  chess_llama_debug_command model docker compose -f "$CHESS_LLAMA_COMPOSE_FILE" ps --status running --format json llama
-  if ps_output=$(chess_llama_compose ps --status running --format json llama 2>/dev/null); then
-    if [[ -n $ps_output ]]; then
-      runtime_state=running
-      chess_llama_debug_command model curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8080/v1/health
-      if curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8080/v1/health >/dev/null 2>&1; then
-        healthy=true
-        local discovery
-        chess_llama_debug_command model curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8080/v1/models
-        if discovery=$(curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8080/v1/models 2>/dev/null); then
-          if [[ -n $discovery ]]; then
-            if model_id=$(printf '%s' "$discovery" | node --input-type=module -e '
-              let source = ""; for await (const chunk of process.stdin) source += chunk;
-              process.stdout.write(JSON.parse(source).data?.[0]?.id ?? "");
-            ' 2>/dev/null); then
-              if [[ -n $model_id ]]; then
+  local status lifecycle probe_health=false
+  if [[ $provider == docker-cuda ]]; then
+    runtime_state=$(chess_llama_docker_model_status) || return
+    [[ $runtime_state == running ]] && probe_health=true
+  else
+    if lifecycle=$(chess_llama_native_model_status); then
+      runtime_state=$(printf '%s' "$lifecycle" | node --input-type=module -e '
+        let source = ""; for await (const chunk of process.stdin) source += chunk;
+        process.stdout.write(JSON.parse(source).runtimeState);
+      ') || runtime_state=unknown
+    else
+      status=$?
+      runtime_state=unknown
+      chess_llama_warn model 'native process state probe failed' state "$CHESS_LLAMA_STATE_DIR" exitCode "$status"
+    fi
+    probe_health=true
+  fi
+  if [[ $probe_health == true ]]; then
+    chess_llama_debug_command model curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8080/v1/health
+    if curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8080/v1/health >/dev/null 2>&1; then
+      healthy=true
+      if [[ $provider == native-metal && $runtime_state == stopped ]]; then
+        runtime_state=external
+      fi
+      local discovery
+      chess_llama_debug_command model curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8080/v1/models
+      if discovery=$(curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8080/v1/models 2>/dev/null); then
+        if [[ -n $discovery ]]; then
+          if model_id=$(printf '%s' "$discovery" | node --input-type=module -e '
+            let source = ""; for await (const chunk of process.stdin) source += chunk;
+            process.stdout.write(JSON.parse(source).data?.[0]?.id ?? "");
+          ' 2>/dev/null); then
+            if [[ -n $model_id ]]; then
+              if chess_llama_runtime_value profile "$model_id" >/dev/null 2>&1; then
+                profile_id=$model_id
+              else
                 profile_id=$(chess_llama_runtime_value profile-id-for-file "$model_id" 2>/dev/null) || profile_id=''
               fi
-            else
-              model_id=''
-              chess_llama_warn model 'model discovery response was invalid' endpoint http://127.0.0.1:8080/v1/models
             fi
+          else
+            model_id=''
+            chess_llama_warn model 'model discovery response was invalid' endpoint http://127.0.0.1:8080/v1/models
           fi
-        else
-          status=$?
-          chess_llama_warn model 'model discovery probe failed' endpoint http://127.0.0.1:8080/v1/models exitCode "$status"
         fi
       else
         status=$?
+        chess_llama_warn model 'model discovery probe failed' endpoint http://127.0.0.1:8080/v1/models exitCode "$status"
+      fi
+    else
+      status=$?
+      if [[ $runtime_state == running ]]; then
         chess_llama_warn model 'runtime health probe failed' endpoint http://127.0.0.1:8080/v1/health exitCode "$status"
       fi
     fi
-  else
-    status=$?
-    runtime_state=unknown
-    chess_llama_warn model 'container state probe failed' compose "$CHESS_LLAMA_COMPOSE_FILE" exitCode "$status"
   fi
   local output
   output=$(MODEL_PROVIDER=$provider MODEL_STATE=$runtime_state MODEL_HEALTHY=$healthy MODEL_ID=$model_id MODEL_PROFILE=$profile_id node --input-type=module -e '
@@ -349,34 +368,12 @@ chess_llama_model_logs() {
     return
   }
   chess_llama_resolve_paths
-  local temporary stdout_file stderr_file status output
-  temporary=$(mktemp -d "${TMPDIR:-/tmp}/chess-llama-logs.XXXXXX") || return "$CHESS_LLAMA_EXIT_UNEXPECTED"
-  stdout_file=$temporary/stdout
-  stderr_file=$temporary/stderr
-  chess_llama_debug_command model docker compose -f "$CHESS_LLAMA_COMPOSE_FILE" logs llama
-  if chess_llama_compose logs llama >"$stdout_file" 2>"$stderr_file"; then
-    status=0
-  else
-    status=$?
-  fi
-  output=$(node --input-type=module -e '
-    import { readFileSync } from "node:fs";
-    const stripFinalNewline = (value) => value.replace(/\r?\n$/, "");
-    process.stdout.write(JSON.stringify({
-      exitCode: Number(process.argv[3]),
-      stdout: stripFinalNewline(readFileSync(process.argv[1], "utf8")),
-      stderr: stripFinalNewline(readFileSync(process.argv[2], "utf8")),
-    }));
-  ' "$stdout_file" "$stderr_file" "$status") || {
-    rm -rf -- "$temporary"
-    return "$CHESS_LLAMA_EXIT_UNEXPECTED"
-  }
-  rm -rf -- "$temporary"
-  printf '%s\n' "$output"
-  if ((status != 0)); then
-    chess_llama_error model 'container logs failed' exitCode "$status"
-  fi
-  return "$status"
+  local provider
+  provider=$(chess_llama_runtime_provider) || return "$CHESS_LLAMA_EXIT_PREREQUISITE"
+  case "$provider" in
+    docker-cuda) chess_llama_docker_model_logs ;;
+    native-metal) chess_llama_native_model_logs ;;
+  esac
 }
 
 chess_llama_model_benchmark() {

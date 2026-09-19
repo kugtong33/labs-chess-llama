@@ -7,7 +7,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup src/benchmark.ts src/database.ts src/host-runtime.ts src/runtime.ts src/trace-stream.ts --format esm",
+    "build": "tsup src/benchmark.ts src/database.ts src/host-runtime.ts src/native-runtime.ts src/runtime.ts src/trace-stream.ts --format esm --splitting false",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
