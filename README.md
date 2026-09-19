@@ -2,6 +2,20 @@
 
 Chess Llama is a local browser chess game built to showcase llama.cpp on a consumer NVIDIA GPU. It uses an honest hybrid design: Stockfish performs a short CPU search and returns up to five credible legal moves; a quantized Qwen3 model running in llama.cpp must choose one of those moves and write the commentary. The LLM selects every AI move that is applied—there is no random or silent engine fallback.
 
+## Runtime architecture
+
+`./chess-llama dev` runs the development-facing services directly and uses
+Docker only for llama.cpp:
+
+```text
+Browser -> web / Vite (127.0.0.1:5173)
+              `-> /api proxy -> backend (127.0.0.1:3001)
+                                    |-> SQLite + Stockfish
+                                    `-> llama container (127.0.0.1:8080)
+```
+
+The separate Compose deployment runs all four responsibilities in containers:
+
 ```text
 Browser -> nginx (127.0.0.1:5173)
              |-> web (React chess game)
@@ -9,7 +23,11 @@ Browser -> nginx (127.0.0.1:5173)
                                   `-> llama -> llama.cpp on CUDA
 ```
 
-The responsibilities are literal: Nginx is the only gateway and published port, web serves the chess game, backend owns the API, chess rules, Stockfish, turn serialization, validation, and SQLite, and llama owns model verification plus inference. Games and settings survive restarts in the database volume; model weights survive in the model volume.
+The responsibilities are literal in both modes: web serves the chess game,
+backend owns the API, chess rules, Stockfish, turn serialization, validation,
+and SQLite, and llama owns model verification plus inference. In Compose,
+Nginx is the gateway and only published port. Games, settings, and model weights
+survive restarts in their owning storage.
 
 ## Student decision tracing
 
@@ -25,36 +43,38 @@ Use `./chess-llama logs follow` (optionally `--layer stockfish|llama`,
 `--game UUID`, or `--format json`) for the terminal view. `model logs` is
 separate raw llama.cpp operational output and is not browser teaching data.
 
-## Requirements
+## Platform support and prerequisites
 
-- Native Linux or WSL2 on Windows
-- NVIDIA RTX 4060-class GPU with a working driver
-- Docker Engine with Compose and NVIDIA Container Toolkit support; on WSL2, Docker Desktop with WSL integration is supported
-- Node.js 24 and Corepack
-- util-linux (`flock`, `setsid`, and `script`), curl, sha256sum, and `ss`
-- Enough disk space for dependencies, the pinned container, and a GGUF model
+The complete runtime is supported on Ubuntu 24.04 LTS and on Windows with
+Ubuntu 24.04 under WSL2. Both require a supported NVIDIA GPU. macOS supports
+source development and static checks, but cannot run the CUDA llama service or
+the complete game.
 
-Verify that host `nvidia-smi` works first. Then use `chess-llama doctor`; its container GPU check uses the exact digest-pinned llama.cpp CUDA image and never substitutes or pulls an unrelated diagnostic image.
+Follow the [setup guide](docs/setup.md) for copy-paste Linux, WSL2, and macOS
+prerequisite commands. It also explains Docker/NVIDIA verification and every
+required `doctor` check.
 
 ## Quick start
 
+After completing the Ubuntu or WSL2 prerequisites, run:
+
 ```bash
+git clone https://github.com/kugtong33/labs-chess-llama.git
+cd labs-chess-llama
 corepack enable
 corepack prepare "$(node -p "require('./package.json').packageManager")" --activate
 pnpm install --frozen-lockfile
-pnpm audit --prod --audit-level high
 pnpm build
-
-# Before the first pull, this usefully reports host issues and an expected
-# model-installed failure.
-./chess-llama doctor --format human
-
 ./chess-llama model pull --profile qwen3-4b-q4-k-m
 ./chess-llama doctor --format human
 ./chess-llama dev
 ```
 
-Open <http://127.0.0.1:5173>. Press Ctrl-C once to stop the web app, backend, and any model container started by that `dev` invocation. The downloaded weights are retained.
+`doctor` must report `READY` before `dev` starts. Open
+<http://127.0.0.1:5173>. Press Ctrl-C once to stop the web app, backend, and any
+model container started by that `dev` invocation. The downloaded weights are
+retained. See [setup](docs/setup.md#project-setup-linux-and-wsl2) for first-run
+details and remediation.
 
 `./chess-llama ...` is the public Bash control plane and works from any current directory when invoked by absolute path or a user-managed symlink. `pnpm chess-llama -- ...` remains a compatibility wrapper. Examples include `./chess-llama web dev`, `./chess-llama backend start`, and `./chess-llama model status`.
 

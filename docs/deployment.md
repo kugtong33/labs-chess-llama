@@ -13,11 +13,15 @@ Nginx sends `/api` traffic to backend and all other traffic to web. Backend call
 
 ## Requirements
 
-- Native Linux, or WSL2 with Docker Desktop's WSL integration enabled.
-- A working NVIDIA driver (`nvidia-smi` succeeds on the host) and a supported NVIDIA GPU.
-- Docker Engine with Docker Compose and NVIDIA Container Toolkit on native Linux.
-- On WSL2, a current Windows NVIDIA driver with CUDA-on-WSL support.
-- Network access on the first build and model download.
+Complete the full-runtime path in the [setup guide](setup.md) before starting
+Compose. The supported hosts are Ubuntu 24.04 LTS with Docker Engine and NVIDIA
+Container Toolkit, or Windows with Ubuntu 24.04 on WSL2 and Docker Desktop's
+WSL integration. Both require a supported NVIDIA GPU and a working
+`nvidia-smi` check.
+
+macOS can build or inspect parts of the repository but cannot run this CUDA
+deployment. The setup guide is the canonical source for platform installation
+commands and Docker/NVIDIA verification.
 
 ## Configuration
 
@@ -87,7 +91,13 @@ docker compose down -v
 
 ## Native development mode
 
-`./chess-llama dev` remains available for native Vite and Node development. Its backend and llama endpoints bind directly to loopback, while the Compose deployment exposes only Nginx. Do not run both modes together: they compete for port `5173` and the local GPU, and they keep separate SQLite/model state.
+`./chess-llama dev` runs Vite and the backend directly on the Linux or WSL2
+host and runs only llama.cpp in Docker; Nginx is not part of that topology. The
+Compose deployment instead runs all four services in Docker and exposes only
+Nginx. Do not run both modes together: they compete for port `5173` and the
+local GPU, and they keep separate SQLite/model state. See the
+[setup guide](setup.md#project-setup-linux-and-wsl2) for the native first-run
+sequence.
 
 ## Real-GPU acceptance smoke
 

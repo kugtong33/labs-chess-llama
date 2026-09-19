@@ -1,10 +1,10 @@
 # Chess Llama Operations
 
-Run commands as `./chess-llama ...` from a source checkout. `pnpm chess-llama -- ...` is an equivalent compatibility wrapper. An optional user-managed symlink may place `chess-llama` on `PATH`; the project never installs one automatically.
+Run commands as `./chess-llama ...` from a source checkout. `pnpm chess-llama -- ...` is an equivalent compatibility wrapper. An optional user-managed symlink may place `chess-llama` on `PATH`; the project never installs one automatically. For a new machine, complete the [platform setup guide](setup.md) before using these operations.
 
 ## Service lifecycle
 
-`./chess-llama dev` checks prerequisites, migrates SQLite, starts the selected llama.cpp profile if needed, then starts the backend and browser web application. It supervises and stops only resources it started. Ctrl-C or SIGTERM performs an orderly shutdown; model weights and persisted data remain.
+`./chess-llama dev` checks prerequisites, migrates SQLite, starts the selected llama.cpp profile in Docker if needed, then starts the backend and Vite web application directly on the Linux or WSL2 host. Nginx is not part of development mode. The command supervises and stops only resources it started. Ctrl-C or SIGTERM performs an orderly shutdown; model weights and persisted data remain.
 
 Default loopback services are:
 
@@ -18,7 +18,9 @@ Do not change the native backend host to `0.0.0.0`; development mode is intentio
 
 ## Compose deployment lifecycle
 
-The Compose deployment is a separate, local-only runtime. From the repository root, start and build it with:
+The Compose deployment is a separate, local-only four-container runtime. It
+requires the full Docker/NVIDIA path from the [setup guide](setup.md). From the
+repository root, start and build it with:
 
 ```bash
 docker compose up --build -d
@@ -157,8 +159,8 @@ The 1.7B profile remains experimental even if it starts successfully; promote it
 
 ## Troubleshooting
 
-- `doctor` says Docker is unavailable: start Docker Engine/Desktop and verify `docker info` and `docker compose version` from the same Linux or WSL2 shell.
-- GPU check fails: verify `nvidia-smi`; on native Linux install/configure NVIDIA Container Toolkit, then restart Docker. On WSL2 update the Windows NVIDIA driver, enable WSL integration for the distro, run `wsl --update`, and restart WSL/Docker Desktop.
+- `doctor` says Docker is unavailable: start Docker Engine/Desktop and verify `docker info` and `docker compose version` from the same Linux or WSL2 shell. Revisit the matching section of the [setup guide](setup.md) if either fails.
+- GPU check fails: verify `nvidia-smi` first, then follow the platform-specific Docker/NVIDIA remediation in the [setup guide](setup.md). Do not install a Linux NVIDIA driver inside WSL2.
 - GPU check reports a missing image: run `model pull`; `doctor` uses `--pull never` by design.
 - Port 5173, 3001, or 8080 is in use: stop the owning local process/container. Do not expose an alternate public bind as a shortcut.
 - Model start times out: inspect `model logs`, confirm the profile checksum with `doctor`, check GPU memory/driver errors, and retry `model stop` then `model start`.

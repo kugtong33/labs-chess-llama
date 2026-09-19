@@ -233,8 +233,8 @@ Ubuntu shell.
 
 ## Install Node.js 24
 
-Use the same Node installation on Ubuntu and WSL2. The nvm installer works on
-both and keeps the project version separate from system packages:
+Use the same Node installation on Ubuntu, WSL2, and macOS. The nvm installer
+works on all three and keeps the project version separate from system packages:
 
 ```bash
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.7/install.sh | bash
@@ -313,6 +313,8 @@ permanent. Then install Node.js 24 using the
 [nvm commands above](#install-nodejs-24), clone the repository, and run:
 
 ```bash
+git clone https://github.com/kugtong33/labs-chess-llama.git
+cd labs-chess-llama
 corepack enable
 corepack prepare "$(node -p "require('./package.json').packageManager")" --activate
 pnpm install --frozen-lockfile
