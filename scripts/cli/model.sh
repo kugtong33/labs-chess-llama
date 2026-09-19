@@ -151,14 +151,14 @@ chess_llama_model_pull() {
     file "$CHESS_LLAMA_MODEL_FILE" directory "$CHESS_LLAMA_MODEL_DIR" image "$CHESS_LLAMA_IMAGE"
   chess_llama_model_lock || return
   mkdir -p -- "$CHESS_LLAMA_MODEL_DIR"
-  chess_llama_info model 'pulling container image' image "$CHESS_LLAMA_IMAGE" compose "$CHESS_LLAMA_COMPOSE_FILE"
-  chess_llama_debug_command model docker compose -f "$CHESS_LLAMA_COMPOSE_FILE" pull llama
-  chess_llama_compose pull llama || {
+  chess_llama_info model 'building llama service image' image "$CHESS_LLAMA_IMAGE" compose "$CHESS_LLAMA_COMPOSE_FILE"
+  chess_llama_debug_command model docker compose -f "$CHESS_LLAMA_COMPOSE_FILE" build llama
+  chess_llama_compose build llama || {
     local status=$?
-    chess_llama_error model 'container image pull failed' image "$CHESS_LLAMA_IMAGE" exitCode "$status"
+    chess_llama_error model 'llama service image build failed' image "$CHESS_LLAMA_IMAGE" exitCode "$status"
     return "$CHESS_LLAMA_EXIT_PREREQUISITE"
   }
-  chess_llama_ok model 'container image available' image "$CHESS_LLAMA_IMAGE"
+  chess_llama_ok model 'llama service image available' image "$CHESS_LLAMA_IMAGE"
 
   local destination=$CHESS_LLAMA_MODEL_DIR/$CHESS_LLAMA_MODEL_FILE
   local expected actual partial quarantine
@@ -228,8 +228,13 @@ chess_llama_model_start() {
   fi
   chess_llama_ok model 'installed weights verified' path "$destination" checksum "$actual"
   chess_llama_info model 'recreating container' container "$CHESS_LLAMA_CONTAINER" portBinding "$CHESS_LLAMA_PORT_BINDING"
-  chess_llama_debug_command model docker compose -f "$CHESS_LLAMA_COMPOSE_FILE" up -d --force-recreate llama
-  chess_llama_compose up -d --force-recreate llama || {
+  docker rm --force "$CHESS_LLAMA_CONTAINER" >/dev/null 2>&1 || true
+  chess_llama_debug_command model docker compose -f "$CHESS_LLAMA_COMPOSE_FILE" run --detach --no-deps \
+    --name "$CHESS_LLAMA_CONTAINER" --publish "$CHESS_LLAMA_PORT_BINDING" \
+    --volume "$destination:/models/current.gguf:ro" --env "LLAMA_PROFILE_ID=$profile" llama
+  chess_llama_compose run --detach --no-deps --name "$CHESS_LLAMA_CONTAINER" \
+    --publish "$CHESS_LLAMA_PORT_BINDING" --volume "$destination:/models/current.gguf:ro" \
+    --env "LLAMA_PROFILE_ID=$profile" llama || {
     local status=$?
     chess_llama_error model 'container start failed' container "$CHESS_LLAMA_CONTAINER" exitCode "$status"
     return "$CHESS_LLAMA_EXIT_RUNTIME"
@@ -270,7 +275,7 @@ chess_llama_model_start() {
     chess_llama_error model 'runtime did not report a loaded model'
     return "$CHESS_LLAMA_EXIT_HEALTH"
   }
-  if [[ $model_id != "$CHESS_LLAMA_MODEL_FILE" ]]; then
+  if [[ $model_id != "$CHESS_LLAMA_MODEL_FILE" && $model_id != "$profile" ]]; then
     chess_llama_error model 'loaded model does not match profile' loaded "$model_id" \
       expected "$CHESS_LLAMA_MODEL_FILE" profile "$profile"
     return "$CHESS_LLAMA_EXIT_HEALTH"

@@ -1,5 +1,0 @@
-include:
-  - path: infra/deployment/model.compose.yaml
-    project_directory: .
-  - path: infra/deployment/app.compose.yaml
-    project_directory: .

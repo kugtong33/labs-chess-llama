@@ -78,7 +78,7 @@ EOF
 
   [ "$status" -eq 0 ]
   [ "$(sha256sum -- "$model_dir/model.gguf" | awk '{print $1}')" = "$CHESS_LLAMA_TEST_CHECKSUM" ]
-  assert_trace_contains "compose -f"
+  assert_trace_contains "compose -f $PROJECT_ROOT/compose.yaml build llama"
   assert_stderr_contains "[INFO] model: selected profile profile=test-profile source=explicit"
   assert_stderr_contains "file=model.gguf"
   assert_stderr_contains "directory=$model_dir"
@@ -125,6 +125,7 @@ EOF
   local model_dir=$TEST_ROOT/models
   export CHESS_LLAMA_RUNTIME_ENTRY=$runtime_entry
   export CHESS_LLAMA_MODEL_DIR=$model_dir
+  export CHESS_LLAMA_TEST_TRACE=$TEST_ROOT/trace
   export CHESS_LLAMA_TEST_MODEL_BYTES='verified model'
   CHESS_LLAMA_TEST_CHECKSUM=$(printf '%s' "$CHESS_LLAMA_TEST_MODEL_BYTES" | sha256sum | awk '{print $1}')
   export CHESS_LLAMA_TEST_CHECKSUM
@@ -145,6 +146,7 @@ case "$2" in
 esac
 EOF
   make_tool docker <<'EOF'
+printf '%s\n' "$*" >>"$CHESS_LLAMA_TEST_TRACE"
 exit 0
 EOF
   make_tool curl <<'EOF'
@@ -157,6 +159,11 @@ EOF
   run --separate-stderr "$PROJECT_ROOT/chess-llama" model start --profile test-profile
 
   [ "$status" -eq 5 ]
+  assert_trace_contains "compose -f $PROJECT_ROOT/compose.yaml run --detach --no-deps"
+  assert_trace_contains "--name chess-llama-model"
+  assert_trace_contains "--publish 127.0.0.1:8080:8080"
+  assert_trace_contains "--volume $model_dir/model.gguf:/models/current.gguf:ro"
+  assert_trace_contains "--env LLAMA_PROFILE_ID=test-profile llama"
   assert_stderr_contains "[INFO] model: starting runtime profile=test-profile"
   assert_stderr_contains "[OK] model: runtime health check passed"
   assert_stderr_contains "[ERROR] model: loaded model does not match profile"
@@ -172,7 +179,7 @@ EOF
   run --separate-stderr "$PROJECT_ROOT/chess-llama" model stop
 
   [ "$status" -eq 0 ]
-  assert_trace_contains "docker compose -f $PROJECT_ROOT/infra/compose.yaml rm -s -f llama"
+  assert_trace_contains "docker compose -f $PROJECT_ROOT/compose.yaml rm -s -f llama"
   assert_stderr_contains "[INFO] model: stopping runtime container=chess-llama-model"
   assert_stderr_contains "[OK] model: runtime stopped"
 }

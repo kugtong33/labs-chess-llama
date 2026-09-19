@@ -4,5 +4,5 @@
     "types": ["node", "@playwright/test"],
     "noEmit": true
   },
-  "include": ["e2e/**/*.ts"]
+  "include": ["**/*.ts"]
 }

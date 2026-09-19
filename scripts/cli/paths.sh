@@ -23,7 +23,7 @@ chess_llama_resolve_paths() {
   CHESS_LLAMA_BACKUPS_DIR=$(chess_llama_absolute_or "${CHESS_LLAMA_BACKUPS_DIR:-}" "$data_dir/backups")
   CHESS_LLAMA_BENCHMARKS_DIR=$(chess_llama_absolute_or "${CHESS_LLAMA_BENCHMARKS_DIR:-}" "$data_dir/benchmarks")
   CHESS_LLAMA_MODEL_DIR=$(chess_llama_absolute_or "${CHESS_LLAMA_MODEL_DIR:-}" "$cache_home/chess-llama/models")
-  CHESS_LLAMA_COMPOSE_FILE=$(chess_llama_absolute_or "${CHESS_LLAMA_COMPOSE_FILE:-}" "$CHESS_LLAMA_PROJECT_ROOT/infra/compose.yaml")
+  CHESS_LLAMA_COMPOSE_FILE=$(chess_llama_absolute_or "${CHESS_LLAMA_COMPOSE_FILE:-}" "$CHESS_LLAMA_PROJECT_ROOT/compose.yaml")
   export CHESS_LLAMA_CONFIG_FILE CHESS_LLAMA_DATABASE_FILE CHESS_LLAMA_BACKUPS_DIR
   export CHESS_LLAMA_BENCHMARKS_DIR CHESS_LLAMA_MODEL_DIR CHESS_LLAMA_COMPOSE_FILE
 }

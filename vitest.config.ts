@@ -26,6 +26,7 @@ export default defineConfig({
       'web/*.test.mjs',
       'llama/**/*.test.ts',
       'scripts/*.test.ts',
+      'tests/*.test.ts',
     ],
   },
 });
