@@ -6,7 +6,6 @@
 **/dist
 coverage
 docs
-infra
 presentation
 test-results
 tests

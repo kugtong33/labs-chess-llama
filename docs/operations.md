@@ -4,48 +4,47 @@ Run commands as `./chess-llama ...` from a source checkout. `pnpm chess-llama --
 
 ## Service lifecycle
 
-`./chess-llama dev` checks prerequisites, migrates SQLite, starts the selected llama.cpp profile if needed, then starts the gateway and browser client. It supervises and stops only resources it started. Ctrl-C or SIGTERM performs an orderly shutdown; model weights and persisted data remain.
+`./chess-llama dev` checks prerequisites, migrates SQLite, starts the selected llama.cpp profile if needed, then starts the backend and browser web application. It supervises and stops only resources it started. Ctrl-C or SIGTERM performs an orderly shutdown; model weights and persisted data remain.
 
 Default loopback services are:
 
 | Layer | Address | Purpose |
 | --- | --- | --- |
-| Client | `http://127.0.0.1:5173` | Vite browser application |
-| Gateway | `http://127.0.0.1:3001` | API and authoritative game state |
+| Web | `http://127.0.0.1:5173` | Vite browser application |
+| Backend | `http://127.0.0.1:3001` | API and authoritative game state |
 | llama.cpp | `http://127.0.0.1:8080` | OpenAI-compatible local inference |
 
-Do not change the gateway host to `0.0.0.0`; the MVP is intentionally local-only.
+Do not change the native backend host to `0.0.0.0`; development mode is intentionally local-only.
 
 ## Compose deployment lifecycle
 
-The Compose deployment is a separate, local-only runtime. From the repository root, its exact one-command start is:
+The Compose deployment is a separate, local-only runtime. From the repository root, start and build it with:
 
 ```bash
-docker compose up -d
+docker compose up --build -d
 ```
 
-The first start pulls the digest-pinned public images, verifies/downloads the GGUF, and builds a workspace release; inspect completion and health with `docker compose ps`. The client, gateway, and model are at `http://127.0.0.1:5173`, `http://127.0.0.1:3001/api/health`, and `http://127.0.0.1:8080/health`. Bootstrap services may show `exited (0)` after successful completion.
+Compose builds one image each for `nginx`, `web`, `backend`, and `llama`. Only Nginx binds a host port. Open `http://127.0.0.1:5173`; browser API calls use the same origin under `/api`. Backend and llama are reachable only by their service names on the internal network.
 
 Use per-service logs when an image pull, bootstrap, GPU startup, or health check fails:
 
 ```bash
-docker compose logs --tail=200 model-bootstrap
-docker compose logs --tail=200 workspace-bootstrap
+docker compose logs --tail=200 nginx
+docker compose logs --tail=200 web
+docker compose logs --tail=200 backend
 docker compose logs --tail=200 llama
-docker compose logs --tail=200 gateway
-docker compose logs --tail=200 client
 ```
 
-Do not run Compose beside `./chess-llama dev` or native client/gateway/model commands: the modes conflict on ports `5173`, `3001`, and `8080`. Native CLI state remains in the XDG paths below; Compose owns separate Docker named volumes for SQLite, models, workspace releases, and the pnpm store.
+Do not run Compose beside `./chess-llama dev`: the modes compete for port `5173` and the local GPU. Native CLI state remains in the XDG paths below; Compose owns only the `database` and `models` named volumes.
 
 For an ordinary restart or source update, use the data-preserving lifecycle:
 
 ```bash
 docker compose down
-docker compose up -d
+docker compose up --build -d
 ```
 
-`docker compose down` preserves named volumes and therefore retained games/settings. `docker compose down -v` is destructive and removes all Compose-managed data, including the SQLite database and GGUF weights. For failed bootstraps, inspect `docker compose ps --all`, the two bootstrap logs, and `docker compose config --quiet`; fix the reported issue and retry the non-destructive lifecycle. See [deployment.md](deployment.md) for the Linux/WSL2/NVIDIA prerequisites, volume inspection, full recovery guidance, and the real-GPU persistence smoke procedure.
+`docker compose down` preserves named volumes and therefore retained games, settings, and verified model weights. `docker compose down -v` is destructive and removes all Compose-managed state. For a failed start, inspect `docker compose ps --all`, the owning service log, and `docker compose config --quiet`; fix the reported issue and retry the non-destructive lifecycle. See [deployment.md](deployment.md) for the Linux/WSL2/NVIDIA prerequisites, configuration, recovery guidance, and the real-GPU persistence smoke procedure.
 
 ## Complete CLI reference
 
@@ -53,13 +52,13 @@ docker compose up -d
 | --- | --- |
 | `dev` | Start and supervise the complete development stack. |
 | `doctor [--format json\|human]` | Check Node/pnpm, Docker/Compose, util-linux (`setsid` and `script`), cached CUDA image GPU access, paths, ports, migration state, installed-model checksum, and service health. |
-| `client dev` | Start only the loopback Vite development server. |
-| `client build` | Build the production browser bundle. |
-| `client serve` | Preview the built browser bundle on loopback. |
-| `gateway dev` | Run the TypeScript gateway with the resolved XDG database. |
-| `gateway start` | Run the built gateway with the resolved XDG database. Build first. |
-| `gateway health [--format json\|human]` | Query `GET /api/health`. |
-| `model pull [--profile ID]` | Pull the pinned CUDA image, download the profile, and verify its SHA-256. |
+| `web dev` | Start only the loopback Vite development server. |
+| `web build` | Build the production browser bundle. |
+| `web serve` | Preview the built browser bundle on loopback. |
+| `backend dev` | Run the TypeScript backend with the resolved XDG database. |
+| `backend start` | Run the built backend with the resolved XDG database. Build first. |
+| `backend health [--format json\|human]` | Query `GET /api/health`. |
+| `model pull [--profile ID]` | Build the pinned llama service image, download the profile, and verify its SHA-256. |
 | `model start [--profile ID]` | Verify weights, recreate the model container, wait for health, and verify the loaded filename. |
 | `model stop` | Stop and remove only the managed model container; preserve weights. |
 | `model status [--format json\|human]` | Report container, health, model/profile, and port state. |
@@ -97,13 +96,13 @@ Log markers use color only when standard error is an eligible terminal. Set `NO_
 ## Decision-trace teaching view
 
 The browser Decision pipeline presents a correlated five-layer AI turn:
-request, gateway, Stockfish, llama, and persistence. It shows only curated
+request, backend, Stockfish, llama, and persistence. It shows only curated
 candidate, retry, selection, commentary, and metric data; it never exposes
 prompts, raw UCI traffic, provider response bodies, secrets, database
 contents, or hidden reasoning.
 
 `./chess-llama dev` enables tracing by default; set
-`CHESS_LLAMA_DEMO_TRACE=0` to disable it. Direct gateway processes remain
+`CHESS_LLAMA_DEMO_TRACE=0` to disable it. Direct backend processes remain
 disabled unless the variable is `1` or `true`. The browser reconnects using
 native EventSource behavior and falls back to persisted AI decisions when the
 stream is disabled or unavailable. `./chess-llama logs follow` consumes the
@@ -119,7 +118,7 @@ operational output.
 | Backups | `${XDG_DATA_HOME:-~/.local/share}/chess-llama/backups/` | `CHESS_LLAMA_BACKUPS_DIR` |
 | Benchmark reports | `${XDG_DATA_HOME:-~/.local/share}/chess-llama/benchmarks/` | `CHESS_LLAMA_BENCHMARKS_DIR` |
 | Model weights | `${XDG_CACHE_HOME:-~/.cache}/chess-llama/models/` | `CHESS_LLAMA_MODEL_DIR` |
-| Compose file | `<repository>/infra/compose.yaml` | `CHESS_LLAMA_COMPOSE_FILE` |
+| Compose file | `<repository>/compose.yaml` | `CHESS_LLAMA_COMPOSE_FILE` |
 
 Overrides must be absolute paths; a relative override is ignored in favor of the default. User-facing theme, orientation, commentary style, Stockfish limits, and preferred model profile are stored in SQLite. The config-file location is reserved for operational configuration; this MVP's active path overrides are environment variables.
 
@@ -133,7 +132,7 @@ Create a consistent online backup while the app is running:
 
 The command prints the exact destination. To restore:
 
-1. Stop `dev` and ensure no standalone gateway process is running.
+1. Stop `dev` and ensure no standalone backend process is running.
 2. Preserve the current database with `./chess-llama db backup` before shutdown, or copy it to a uniquely named recovery file.
 3. Resolve the active database path and chosen backup path exactly; do not restore using a wildcard.
 4. Copy the chosen backup over the database file, retaining owner permissions.
@@ -164,7 +163,7 @@ The 1.7B profile remains experimental even if it starts successfully; promote it
 - Port 5173, 3001, or 8080 is in use: stop the owning local process/container. Do not expose an alternate public bind as a shortcut.
 - Model start times out: inspect `model logs`, confirm the profile checksum with `doctor`, check GPU memory/driver errors, and retry `model stop` then `model start`.
 - Model filename mismatch: stop the container and start the intended explicit profile. The CLI refuses to accept a healthy server carrying the wrong model.
-- Gateway reports pending migration/storage failure: stop standalone gateways, run `db status`, take a backup, then run `db migrate`.
+- Backend reports pending migration/storage failure: stop standalone backends, run `db status`, take a backup, then run `db migrate`.
 - WSL2 cannot reach the UI: open `http://127.0.0.1:5173` from Windows; confirm the Vite process is still running inside the intended distro and that no VPN/security product blocks localhost forwarding.
 
 ## Local teardown
@@ -175,4 +174,4 @@ First stop managed processes and the container:
 ./chess-llama model stop
 ```
 
-Stop any foreground client/gateway with Ctrl-C. For a recoverable teardown, rename the exact `chess-llama` data and config directories after verifying their resolved paths. This removes games, settings, backups, reports, and operational configuration from active use. Leave `${XDG_CACHE_HOME:-~/.cache}/chess-llama/models/` untouched—the default teardown preserves downloaded weights. Delete that model directory only when you intentionally want to reclaim the model storage and are willing to download it again.
+Stop any foreground web/backend process with Ctrl-C. For a recoverable teardown, rename the exact `chess-llama` data and config directories after verifying their resolved paths. This removes games, settings, backups, reports, and operational configuration from active use. Leave `${XDG_CACHE_HOME:-~/.cache}/chess-llama/models/` untouched—the default teardown preserves downloaded weights. Delete that model directory only when you intentionally want to reclaim the model storage and are willing to download it again.

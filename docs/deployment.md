@@ -1,92 +1,101 @@
 # Compose Deployment
 
-This deployment is local-only: its client, gateway, and llama.cpp ports bind to `127.0.0.1`. Run these commands from the repository root. The committed root `.env` selects `docker.compose.yaml`, the project name, service ports, and direct digest-pinned public images; no additional Compose flags are needed.
+The root [`compose.yaml`](../compose.yaml) runs exactly four services:
+
+| Service | Responsibility | Host access |
+| --- | --- | --- |
+| `nginx` | Gateway and reverse proxy | `127.0.0.1:${NGINX_PORT}` |
+| `web` | Serves the built React chess game | Internal only (`4173`) |
+| `backend` | API, chess rules, Stockfish, and SQLite | Internal only (`3001`) |
+| `llama` | GGUF verification/download and llama.cpp inference | Internal only (`8080`) |
+
+Nginx sends `/api` traffic to backend and all other traffic to web. Backend calls llama directly over the Compose network. Run every command below from the repository root.
 
 ## Requirements
 
 - Native Linux, or WSL2 with Docker Desktop's WSL integration enabled.
-- A working NVIDIA driver (`nvidia-smi` succeeds on the host) and an NVIDIA GPU suitable for the selected model.
-- Docker Engine with Docker Compose and NVIDIA Container Toolkit on native Linux. Configure the NVIDIA runtime and restart Docker after installation.
-- On WSL2, use a current Windows NVIDIA driver with CUDA-on-WSL support, run `wsl --update`, enable Docker Desktop WSL integration for the distro, and restart WSL/Docker Desktop after driver or toolkit changes.
+- A working NVIDIA driver (`nvidia-smi` succeeds on the host) and a supported NVIDIA GPU.
+- Docker Engine with Docker Compose and NVIDIA Container Toolkit on native Linux.
+- On WSL2, a current Windows NVIDIA driver with CUDA-on-WSL support.
+- Network access on the first build and model download.
+
+## Configuration
+
+The committed `.env` contains the complete public configuration surface:
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `NGINX_PORT` | `5173` | Loopback port for the whole application |
+| `BACKEND_LOG_LEVEL` | `info` | Backend log level |
+| `BACKEND_DEMO_TRACE` | `false` | Enables the curated teaching event stream |
+| `LLAMA_PROFILE_ID` | `qwen3-4b-q4-k-m` | Model profile from the runtime manifest |
+| `LLAMA_CONTEXT_SIZE` | `4096` | llama.cpp context size |
+| `LLAMA_GPU_LAYERS` | `99` | Layers offloaded to the GPU |
+
+Image pins, container paths, service names, and internal ports are implementation details beside their owning Dockerfiles or in `compose.yaml`; they are intentionally not duplicated as environment variables.
 
 ## Start and inspect
 
-Start the complete deployment with one command:
+Build and start the complete application:
 
 ```bash
-docker compose up -d
+docker compose up --build -d
+docker compose ps
 ```
 
-On the first start, Docker pulls the digest-pinned Node, Nginx, and llama.cpp images. `model-bootstrap` downloads and checksum-verifies the selected GGUF into the model volume, while `workspace-bootstrap` installs the root `packageManager` version of pnpm and builds a release in the workspace volume. Those initial jobs can take several minutes. A bootstrap service shown as `exited (0)` after completion is expected; the runtime services must become healthy.
+The first run can take several minutes. Docker builds the four service images, then llama downloads the selected GGUF to the `models` volume, verifies its SHA-256, and starts inference. Backend waits for llama health; Nginx waits for web and backend health.
+
+Open <http://127.0.0.1:5173>. The application health endpoint is available through the gateway:
+
+```bash
+curl -fsS http://127.0.0.1:5173/api/health
+```
+
+Backend and llama intentionally have no host ports. Inspect their health and logs through Docker:
 
 ```bash
 docker compose ps
-curl -fsS http://127.0.0.1:5173/
-curl -fsS http://127.0.0.1:3001/api/health
-curl -fsS http://127.0.0.1:8080/health
-```
-
-Open <http://127.0.0.1:5173>. The direct health endpoints are `http://127.0.0.1:3001/api/health` (gateway) and `http://127.0.0.1:8080/health` (llama.cpp).
-
-Use each service's logs to diagnose startup or runtime failures:
-
-```bash
-docker compose logs --tail=200 model-bootstrap
-docker compose logs --tail=200 workspace-bootstrap
+docker compose logs --tail=200 nginx
+docker compose logs --tail=200 web
+docker compose logs --tail=200 backend
 docker compose logs --tail=200 llama
-docker compose logs --tail=200 gateway
-docker compose logs --tail=200 client
 ```
 
-Add `-f` to follow any of these streams. `docker compose ps` and these logs are also the first checks after an interrupted first start.
-
-## Native mode is separate
-
-Do not run `./chess-llama dev` (or native client, gateway, or model commands) while this Compose deployment is running: both modes use host ports `5173`, `3001`, and `8080`. Stop one mode before starting the other; changing the public bind is not supported.
-
-Native CLI data uses its documented XDG data and cache paths. Compose instead owns Docker named volumes for SQLite, model weights, the built workspace, and the pnpm store. The two modes do not share games, settings, or downloaded weights.
+Add `-f` to follow a stream. A failed or interrupted llama download leaves any valid cached `current.gguf` intact; fix the reported network, disk, manifest, checksum, GPU, or driver problem and start again.
 
 ## Restart, update, and persistence
 
-For an ordinary restart or after updating the checkout, stop containers and start them again:
+An ordinary restart preserves both named volumes:
 
 ```bash
 docker compose down
-docker compose up -d
+docker compose up --build -d
 ```
 
-`docker compose down` removes the project containers and network but preserves the named `database`, `models`, `workspace`, and `pnpm` volumes (normally named with the `chess-llama_` project prefix). Games and settings remain in the database volume, while verified weights and successful workspace releases remain available for reuse. Inspect them without changing data with:
+The `database` volume owns games and settings. The `models` volume owns verified model weights. There are no source, workspace, package-manager, or Nginx configuration mounts.
 
 ```bash
 docker volume ls --filter label=com.docker.compose.project=chess-llama
+docker compose config --quiet
 ```
 
-Only use the following destructive command when intentionally discarding all Compose-managed games, settings, models, workspace releases, and pnpm cache:
+Only use the following command when intentionally discarding all Compose-managed games, settings, and models:
 
 ```bash
 docker compose down -v
 ```
 
-## Bootstrap recovery
+## Native development mode
 
-If either bootstrap service fails, do not delete volumes as a first response. Inspect the failure and resolved configuration:
-
-```bash
-docker compose ps --all
-docker compose logs --tail=200 model-bootstrap
-docker compose logs --tail=200 workspace-bootstrap
-docker compose config --quiet
-```
-
-Correct the reported host, GPU, network, source, or configuration issue, then retry with the non-destructive lifecycle:
-
-```bash
-docker compose down
-docker compose up -d
-```
-
-Model downloads are checksum-verified before activation, and application releases activate only after a successful frozen install and build. Therefore a failed bootstrap leaves a valid previous model or release intact when one exists.
+`./chess-llama dev` remains available for native Vite and Node development. Its backend and llama endpoints bind directly to loopback, while the Compose deployment exposes only Nginx. Do not run both modes together: they compete for port `5173` and the local GPU, and they keep separate SQLite/model state.
 
 ## Real-GPU acceptance smoke
 
-After all runtime services are healthy, open the client, create a game, make a legal human move (for example `e2` to `e4`), and wait until the AI response is applied. Record the game or settings state, then run the non-destructive restart commands above and confirm that state is still present. Finish with `docker compose down` if containers should be stopped; do not use `down -v` for normal acceptance.
+After all four services are healthy:
+
+1. Open the chess game through Nginx.
+2. Create a game and make a legal move, such as `e2` to `e4`.
+3. Wait for the LLM-selected response and commentary.
+4. Record a game or settings value.
+5. Run the data-preserving restart above and confirm the state remains.
+6. Run `docker compose down` when finished; do not use `down -v` for normal acceptance.

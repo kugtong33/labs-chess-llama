@@ -90,7 +90,6 @@ Chess Llama is distributed under GPL-3.0; the full license is in `LICENSE`. Stoc
 | @dnd-kit/modifiers | 9.0.0 | [link](https://github.com/clauderic/dnd-kit#readme) |
 | @dnd-kit/utilities | 3.2.2 | [link](https://github.com/clauderic/dnd-kit#readme) |
 | @fastify/ajv-compiler | 4.0.6 | [link](https://github.com/fastify/ajv-compiler#readme) |
-| @fastify/cors | 11.3.0 | [link](https://github.com/fastify/fastify-cors#readme) |
 | @fastify/error | 4.2.0 | [link](https://github.com/fastify/fastify-error#readme) |
 | @fastify/fast-json-stringify-compiler | 5.1.0 | [link](https://github.com/fastify/fast-json-stringify-compiler#readme) |
 | @fastify/forwarded | 3.0.2 | [link](https://github.com/fastify/forwarded#readme) |
@@ -100,8 +99,6 @@ Chess Llama is distributed under GPL-3.0; the full license is in `LICENSE`. Stoc
 | @pinojs/redact | 0.4.0 | [link](https://github.com/pinojs/redact#readme) |
 | @tanstack/query-core | 5.102.8 | [link](https://tanstack.com/query) |
 | @tanstack/react-query | 5.102.8 | [link](https://tanstack.com/query) |
-| @types/better-sqlite3 | 7.6.13 | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/better-sqlite3) |
-| @types/node | 26.5.1 | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/node) |
 | abstract-logging | 2.0.1 | [link](https://github.com/jsumners/abstract-logging#readme) |
 | ajv | 8.20.0 | [link](https://ajv.js.org) |
 | ajv-formats | 3.0.1 | [link](https://github.com/ajv-validator/ajv-formats#readme) |
@@ -173,7 +170,6 @@ Chess Llama is distributed under GPL-3.0; the full license is in `LICENSE`. Stoc
 | tar-stream | 2.2.0 | [link](https://github.com/mafintosh/tar-stream) |
 | thread-stream | 4.2.0 | [link](https://github.com/mcollina/thread-stream#readme) |
 | toad-cache | 3.7.4 | [link](https://github.com/kibertoad/toad-cache) |
-| undici-types | 8.9.0 | [link](https://undici.nodejs.org) |
 | util-deprecate | 1.0.2 | [link](https://github.com/TooTallNate/util-deprecate) |
 | zod | 4.6.5 | [link](https://zod.dev) |
 

@@ -3,23 +3,24 @@
 Chess Llama is a local browser chess game built to showcase llama.cpp on a consumer NVIDIA GPU. It uses an honest hybrid design: Stockfish performs a short CPU search and returns up to five credible legal moves; a quantized Qwen3 model running in llama.cpp must choose one of those moves and write the commentary. The LLM selects every AI move that is applied—there is no random or silent engine fallback.
 
 ```text
-React client (5173) -> Fastify gateway (3001) -> SQLite
-                              |-> Stockfish.js shortlist on CPU
-                              `-> llama.cpp server (8080) on CUDA
+Browser -> nginx (127.0.0.1:5173)
+             |-> web (React chess game)
+             `-> /api -> backend -> SQLite + Stockfish
+                                  `-> llama -> llama.cpp on CUDA
 ```
 
-The gateway owns chess rules, turn serialization, validation, and persistence. Games and settings survive restarts in SQLite. Browser, gateway, and model ports bind to `127.0.0.1` only.
+The responsibilities are literal: Nginx is the only gateway and published port, web serves the chess game, backend owns the API, chess rules, Stockfish, turn serialization, validation, and SQLite, and llama owns model verification plus inference. Games and settings survive restarts in the database volume; model weights survive in the model volume.
 
 ## Student decision tracing
 
-The play screen includes a five-stage Decision pipeline: request, gateway,
+The play screen includes a five-stage Decision pipeline: request, backend,
 Stockfish, llama, and saved decision. It streams curated teaching evidence and
 falls back to persisted decisions after refresh or when tracing is unavailable.
 It never renders raw prompts, raw UCI traffic, provider bodies, secrets, or
 private reasoning.
 
 `./chess-llama dev` enables tracing unless `CHESS_LLAMA_DEMO_TRACE=0`.
-Direct gateway starts are disabled until `CHESS_LLAMA_DEMO_TRACE=1` or `true`.
+Direct backend starts are disabled until `CHESS_LLAMA_DEMO_TRACE=1` or `true`.
 Use `./chess-llama logs follow` (optionally `--layer stockfish|llama`,
 `--game UUID`, or `--format json`) for the terminal view. `model logs` is
 separate raw llama.cpp operational output and is not browser teaching data.
@@ -53,21 +54,21 @@ pnpm build
 ./chess-llama dev
 ```
 
-Open <http://127.0.0.1:5173>. Press Ctrl-C once to stop the client, gateway, and any model container started by that `dev` invocation. The downloaded weights are retained.
+Open <http://127.0.0.1:5173>. Press Ctrl-C once to stop the web app, backend, and any model container started by that `dev` invocation. The downloaded weights are retained.
 
-`./chess-llama ...` is the public Bash control plane and works from any current directory when invoked by absolute path or a user-managed symlink. `pnpm chess-llama -- ...` remains a compatibility wrapper. Examples include `./chess-llama client dev`, `./chess-llama gateway start`, and `./chess-llama model status`.
+`./chess-llama ...` is the public Bash control plane and works from any current directory when invoked by absolute path or a user-managed symlink. `pnpm chess-llama -- ...` remains a compatibility wrapper. Examples include `./chess-llama web dev`, `./chess-llama backend start`, and `./chess-llama model status`.
 
 ## Container deployment
 
 With Docker Compose and NVIDIA container GPU support installed, start the separate local deployment from the repository root with:
 
 ```bash
-docker compose up -d
+docker compose up --build -d
 ```
 
-The first start pulls the pinned images, verifies/downloads the GGUF, and builds the application workspace. Inspect it with `docker compose ps`; open <http://127.0.0.1:5173>, and query the gateway and model at `http://127.0.0.1:3001/api/health` and `http://127.0.0.1:8080/health`.
+The first start builds the four service images and verifies/downloads the GGUF before llama.cpp starts. Inspect it with `docker compose ps`, then open <http://127.0.0.1:5173>. API requests use the same origin under `/api`; backend and llama have no host ports.
 
-Compose and `./chess-llama dev` cannot run at the same time because both own ports `5173`, `3001`, and `8080`. Compose keeps its SQLite data, model, workspace, and pnpm named volumes separate from native CLI XDG data. Use `docker compose down` for a normal, data-preserving stop; `docker compose down -v` intentionally removes all Compose-managed data. See [docs/deployment.md](docs/deployment.md) for prerequisites, per-service logs, bootstrap recovery, updates, and persistence verification.
+Compose and `./chess-llama dev` should not run at the same time because both use port `5173` and compete for the local GPU. Compose keeps its SQLite data and model weights in named volumes separate from native CLI XDG data. Use `docker compose down` for a normal, data-preserving stop; `docker compose down -v` intentionally removes all Compose-managed data. See [docs/deployment.md](docs/deployment.md) for prerequisites, per-service logs, startup recovery, updates, and persistence verification.
 
 ## Model profiles
 
@@ -98,7 +99,7 @@ git diff --exit-code THIRD_PARTY_NOTICES.md
 
 Normal CI uses a deterministic fake llama.cpp HTTP server and temporary SQLite database. The deployment configuration tests require the Docker Compose CLI, but CI requires no GPU, network model download, or model weights. Real RTX 4060 qualification is a separate, documented acceptance run.
 
-CI also rejects unreviewed production licenses and high-severity production dependency findings, validates the root Compose configuration, and scans every unique digest-pinned runtime image declared in `.env` for high and critical OS/library vulnerabilities.
+CI also rejects unreviewed production licenses and high-severity production dependency findings, validates `compose.yaml` and all four Dockerfiles, and scans every unique digest-pinned base image discovered from those Dockerfiles for high and critical OS/library vulnerabilities.
 
 See [docs/operations.md](docs/operations.md) for native CLI lifecycle, backup/restore, troubleshooting, paths, and teardown, and [docs/deployment.md](docs/deployment.md) for Compose operations.
 

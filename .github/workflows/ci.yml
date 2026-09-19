@@ -35,7 +35,13 @@ jobs:
           echo "PNPM_STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
 
       - name: Validate root Compose deployment config
-        run: docker compose --env-file .env -f docker.compose.yaml config --quiet
+        run: docker compose config --quiet
+
+      - name: Validate service Dockerfiles
+        run: |
+          for dockerfile in nginx/Dockerfile web/Dockerfile backend/Dockerfile llama/Dockerfile; do
+            docker build --check --file "$dockerfile" .
+          done
 
       - name: Cache pnpm store
         uses: actions/cache@v4
@@ -111,37 +117,10 @@ jobs:
         with:
           node-version: 24
 
-      - name: Read unique runtime images from root environment
+      - name: Read unique runtime images from service Dockerfiles
         id: runtime-images
         run: |
-          node --input-type=module <<'NODE' >> "$GITHUB_OUTPUT"
-          import { readFileSync } from 'node:fs';
-
-          const requiredKeys = ['NODE_IMAGE', 'NGINX_IMAGE', 'LLAMA_IMAGE'];
-          const environment = new Map();
-          for (const line of readFileSync('.env', 'utf8').split(/\r?\n/u)) {
-            const trimmed = line.trim();
-            if (trimmed === '' || trimmed.startsWith('#')) continue;
-            const separator = trimmed.indexOf('=');
-            if (separator < 1) throw new Error(`Invalid .env entry: ${line}`);
-            const key = trimmed.slice(0, separator);
-            const value = trimmed.slice(separator + 1);
-            if (environment.has(key)) {
-              throw new Error(`Duplicate .env entry for ${key}`);
-            }
-            environment.set(key, value);
-          }
-
-          const images = requiredKeys.map((key) => {
-            const image = environment.get(key);
-            if (!image) throw new Error(`Missing ${key} in .env`);
-            if (!/^(docker\.io|ghcr\.io)\/.+@sha256:[a-f0-9]{64}$/u.test(image)) {
-              throw new Error(`${key} must be a direct public digest-pinned image`);
-            }
-            return image;
-          });
-          console.log(`images=${JSON.stringify([...new Set(images)])}`);
-          NODE
+          echo "images=$(node scripts/container-images.mjs)" >> "$GITHUB_OUTPUT"
 
   container-security:
     needs: prepare-runtime-images

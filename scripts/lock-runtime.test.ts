@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   resolveProfileMetadata,
+  updateDockerfileImage,
   validateRuntimeManifest,
 } from './lock-runtime.mjs';
 
@@ -64,5 +65,22 @@ describe('runtime lock metadata', () => {
         generatedAt: 'not-a-date',
       }),
     ).toThrow();
+  });
+
+  it('updates the llama Dockerfile pin without touching its Node base', () => {
+    const previous = `ghcr.io/ggml-org/llama.cpp@sha256:${'a'.repeat(64)}`;
+    const next = `ghcr.io/ggml-org/llama.cpp@sha256:${'b'.repeat(64)}`;
+    const source = [
+      `FROM docker.io/library/node:24@sha256:${'c'.repeat(64)} AS node-runtime`,
+      `FROM ${previous}`,
+      '',
+    ].join('\n');
+
+    expect(updateDockerfileImage(source, next)).toBe(
+      source.replace(previous, next),
+    );
+    expect(() => updateDockerfileImage('FROM node:24\n', next)).toThrow(
+      'Expected exactly one pinned llama.cpp base image',
+    );
   });
 });

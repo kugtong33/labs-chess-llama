@@ -1,8 +1,10 @@
 {
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
     "types": ["node"],
     "noEmit": true
   },
-  "include": ["*.mts", "*.test.ts"]
+  "include": ["*.mjs", "*.mts", "*.test.ts"]
 }

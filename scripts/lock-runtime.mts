@@ -13,6 +13,7 @@ import {
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const sourcePath = resolve(root, 'config/runtime-source.json');
 const manifestPath = resolve(root, 'config/runtime-manifest.json');
+const llamaDockerfilePath = resolve(root, 'llama/Dockerfile');
 
 const sourceSchema = z.object({
   image: z.string().min(1),
@@ -71,6 +72,15 @@ export function validateRuntimeManifest(value: unknown): RuntimeManifest {
   return runtimeManifestSchema.parse(value);
 }
 
+export function updateDockerfileImage(source: string, image: string): string {
+  const pattern = /ghcr\.io\/ggml-org\/llama\.cpp@sha256:[a-f0-9]{64}/gu;
+  const matches = source.match(pattern) ?? [];
+  if (matches.length !== 1) {
+    throw new Error('Expected exactly one pinned llama.cpp base image');
+  }
+  return source.replace(pattern, image);
+}
+
 export async function lockRuntime(): Promise<void> {
   const source = sourceSchema.parse(
     JSON.parse(await readFile(sourcePath, 'utf8')),
@@ -91,31 +101,51 @@ export async function lockRuntime(): Promise<void> {
     source.profiles.map((profile) => resolveProfileMetadata(profile)),
   );
 
+  const pinnedImage = source.image.replace(/:[^/:]+$/u, `@${digest}`);
   const manifest = validateRuntimeManifest({
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
-    image: source.image.replace(/:[^/:]+$/u, `@${digest}`),
+    image: pinnedImage,
     source: { image: source.image },
     profiles,
   });
 
-  const partial = `${manifestPath}.partial-${process.pid}`;
+  const manifestPartial = `${manifestPath}.partial-${process.pid}`;
+  const dockerfilePartial = `${llamaDockerfilePath}.partial-${process.pid}`;
   try {
-    const handle = await open(partial, 'wx');
-    try {
-      await handle.writeFile(`${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
-    JSON.parse(await readFile(partial, 'utf8'));
-    await rename(partial, manifestPath);
+    const dockerfile = updateDockerfileImage(
+      await readFile(llamaDockerfilePath, 'utf8'),
+      pinnedImage,
+    );
+    await Promise.all([
+      writeSyncedFile(
+        manifestPartial,
+        `${JSON.stringify(manifest, null, 2)}\n`,
+      ),
+      writeSyncedFile(dockerfilePartial, dockerfile),
+    ]);
+    JSON.parse(await readFile(manifestPartial, 'utf8'));
+    await rename(manifestPartial, manifestPath);
+    await rename(dockerfilePartial, llamaDockerfilePath);
   } catch (error) {
-    await rm(partial, { force: true });
+    await Promise.all([
+      rm(manifestPartial, { force: true }),
+      rm(dockerfilePartial, { force: true }),
+    ]);
     throw error;
   }
 
   console.log(`Locked ${manifest.profiles.length} profiles to ${manifestPath}`);
+}
+
+async function writeSyncedFile(path: string, contents: string): Promise<void> {
+  const handle = await open(path, 'wx');
+  try {
+    await handle.writeFile(contents, 'utf8');
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
 }
 
 const invokedPath = process.argv[1] ? resolve(process.argv[1]) : undefined;

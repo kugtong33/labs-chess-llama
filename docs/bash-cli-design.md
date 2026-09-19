@@ -7,7 +7,7 @@ Chess Llama has one public control plane: the executable `./chess-llama`. It is 
 Bash owns public command parsing, help, exit-code mapping, XDG paths, Docker Compose, curl requests, downloads, checksums, locks, process supervision, signals, and output selection. Commands invoke the applications through their native tools:
 
 - React uses Vite through pnpm.
-- The Fastify gateway uses Node directly; development adds the tsx loader, while `start` requires compiled JavaScript.
+- The Fastify backend uses Node directly; development adds the tsx loader, while `start` requires compiled JavaScript.
 - llama.cpp uses the digest-pinned Docker Compose service.
 - Health and model discovery use curl.
 - GGUF integrity uses sha256sum.
@@ -18,7 +18,7 @@ The private `@chess-llama/operations` workspace contains fixed-purpose Node entr
 
 The CLI uses strict Bash, quoted expansions, command arrays, absolute project paths, loopback-only services, and no `eval` or generated shell sourcing. Model mutations use `flock`; downloads use a same-directory `.partial` file, SHA-256 verification, invalid-file quarantine, and atomic rename. Model startup waits at most 120 seconds and accepts the runtime only when `/v1/models` reports the expected GGUF filename.
 
-`dev` checks prerequisites, migrates SQLite, reuses healthy pre-existing services, and tracks only resources it starts. Gateway and client children run in isolated `setsid` process groups so cleanup reaches their full Node process trees. SIGINT, SIGTERM, or a managed child exit triggers reverse cleanup: client, gateway, then the model container. Persisted games, settings, reports, backups, and model weights remain on disk.
+`dev` checks prerequisites, migrates SQLite, reuses healthy pre-existing services, and tracks only resources it starts. Backend and web children run in isolated `setsid` process groups so cleanup reaches their full Node process trees. SIGINT, SIGTERM, or a managed child exit triggers reverse cleanup: web, backend, then the model container. Persisted games, settings, reports, backups, and model weights remain on disk.
 
 ## Portability
 

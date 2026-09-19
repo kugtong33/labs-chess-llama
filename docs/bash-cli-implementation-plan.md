@@ -3,13 +3,13 @@
 ## Public contract
 
 - Provide `./chess-llama` and retain `pnpm chess-llama -- ...` as a wrapper.
-- Preserve the `client`, `db`, `dev`, `doctor`, `gateway`, and `model` namespaces, JSON/human formats, environment overrides, repeatable benchmark profiles, and exit codes 0–6.
+- Preserve the `web`, `db`, `dev`, `doctor`, `backend`, and `model` namespaces, JSON/human formats, environment overrides, repeatable benchmark profiles, and exit codes 0–6.
 - Run React/Vite and Node applications directly through their native CLIs; keep llama.cpp in Docker Compose.
 
 ## Implementation sequence
 
 1. Capture dispatcher and tool-invocation behavior with executable contract tests.
-2. Add modular Bash paths, output, client, gateway, database, model, doctor, and supervisor layers.
+2. Add modular Bash paths, output, web, backend, database, model, doctor, and supervisor layers.
 3. Move runtime-manifest types into shared contracts and database/benchmark operations into a private compiled Node workspace.
 4. Add atomic model handling, readiness and identity checks, lock-safe lifecycle operations, and ownership-aware cleanup.
 5. Replace the pnpm wrapper, remove Commander/Execa CLI code, update documentation, and verify the compiled distribution.
