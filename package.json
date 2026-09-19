@@ -9,7 +9,7 @@
   "scripts": {
     "build": "pnpm -r build",
     "chess-llama": "./chess-llama",
-    "typecheck": "pnpm -r typecheck && tsc --noEmit -p scripts/tsconfig.json && tsc --noEmit -p tests/tsconfig.json",
+    "typecheck": "pnpm -r typecheck && tsc --noEmit -p llama/tsconfig.json && tsc --noEmit -p scripts/tsconfig.json && tsc --noEmit -p tests/tsconfig.json",
     "test": "vitest run && pnpm test:shell",
     "test:shell": "pnpm --filter @chess-llama/operations... build && bats tests/shell",
     "test:coverage": "vitest run --coverage",

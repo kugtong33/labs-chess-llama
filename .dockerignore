@@ -1,0 +1,15 @@
+.git
+.github
+.superpowers
+.env
+**/node_modules
+**/dist
+coverage
+docs
+infra
+presentation
+test-results
+tests
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal

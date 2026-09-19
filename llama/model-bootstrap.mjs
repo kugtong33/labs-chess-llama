@@ -20,14 +20,14 @@ export async function bootstrapModel({
   environment = process.env,
   fetcher = fetch,
 } = {}) {
-  const profileId = requiredEnvironmentValue(environment, 'MODEL_PROFILE_ID');
+  const profileId = requiredEnvironmentValue(environment, 'LLAMA_PROFILE_ID');
   const manifestPath = requiredEnvironmentValue(
     environment,
-    'RUNTIME_MANIFEST_PATH',
+    'LLAMA_MANIFEST_PATH',
   );
   const modelDirectory = requiredEnvironmentValue(
     environment,
-    'MODEL_DIRECTORY',
+    'LLAMA_MODEL_DIRECTORY',
   );
   /** @type {unknown} */
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));

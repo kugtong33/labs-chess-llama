@@ -55,9 +55,9 @@ async function createFixture(
     manifestPath,
     modelDirectory,
     environment: {
-      MODEL_PROFILE_ID: profileId,
-      RUNTIME_MANIFEST_PATH: manifestPath,
-      MODEL_DIRECTORY: modelDirectory,
+      LLAMA_PROFILE_ID: profileId,
+      LLAMA_MANIFEST_PATH: manifestPath,
+      LLAMA_MODEL_DIRECTORY: modelDirectory,
     },
   };
 }
@@ -69,7 +69,7 @@ describe('model bootstrap', () => {
 
     await expect(
       bootstrapModel({
-        environment: { ...fixture.environment, MODEL_PROFILE_ID: 'missing' },
+        environment: { ...fixture.environment, LLAMA_PROFILE_ID: 'missing' },
         fetcher,
       }),
     ).rejects.toThrow('Unknown model profile: missing');

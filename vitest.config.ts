@@ -23,6 +23,7 @@ export default defineConfig({
       'packages/**/src/**/*.test.ts',
       'backend/src/**/*.test.ts',
       'web/src/**/*.test.{ts,tsx}',
+      'web/*.test.mjs',
       'llama/**/*.test.ts',
       'scripts/*.test.ts',
     ],
