@@ -37,17 +37,27 @@ EOF
   assert_stderr_contains "Unknown model profile: missing"
 }
 
-@test "model pull installs only checksum-verified weights through curl" {
+@test "model pull delegates verified artifact installation to the portable host runtime" {
   local runtime_entry=$TEST_ROOT/runtime.js
+  local host_entry=$TEST_ROOT/host-runtime.js
   local model_dir=$TEST_ROOT/models
   export CHESS_LLAMA_RUNTIME_ENTRY=$runtime_entry
+  export CHESS_LLAMA_HOST_RUNTIME_ENTRY=$host_entry
   export CHESS_LLAMA_MODEL_DIR=$model_dir
   export CHESS_LLAMA_TEST_TRACE=$TEST_ROOT/trace
   export CHESS_LLAMA_TEST_MODEL_BYTES='verified model'
   CHESS_LLAMA_TEST_CHECKSUM=$(printf '%s' "$CHESS_LLAMA_TEST_MODEL_BYTES" | sha256sum | awk '{print $1}')
   export CHESS_LLAMA_TEST_CHECKSUM
   printf 'placeholder\n' >"$runtime_entry"
+  printf 'placeholder\n' >"$host_entry"
   make_tool node <<'EOF'
+if [[ $1 == "$CHESS_LLAMA_HOST_RUNTIME_ENTRY" && $2 == install-artifact ]]; then
+  printf '%s\n' "$*" >>"$CHESS_LLAMA_TEST_TRACE"
+  mkdir -p "${3%/*}"
+  printf '%s' "$CHESS_LLAMA_TEST_MODEL_BYTES" >"$3"
+  printf '{"status":"downloaded","path":"%s"}\n' "$3"
+  exit 0
+fi
 case "$2" in
   profile) printf '{}\n' ;;
   image) printf 'example.invalid/llama@sha256:%064d\n' 0 ;;
@@ -63,37 +73,35 @@ EOF
   make_tool docker <<'EOF'
 printf '%s\n' "$*" >>"$CHESS_LLAMA_TEST_TRACE"
 EOF
-  make_tool curl <<'EOF'
-while (($#)); do
-  if [[ $1 == --output ]]; then
-    shift
-    destination=$1
-  fi
-  shift
-done
-printf '%s' "$CHESS_LLAMA_TEST_MODEL_BYTES" >"$destination"
-EOF
 
   run --separate-stderr "$PROJECT_ROOT/chess-llama" model pull --profile test-profile
 
   [ "$status" -eq 0 ]
   [ "$(sha256sum -- "$model_dir/model.gguf" | awk '{print $1}')" = "$CHESS_LLAMA_TEST_CHECKSUM" ]
   assert_trace_contains "compose -f $PROJECT_ROOT/compose.yaml build llama"
+  assert_trace_contains "$host_entry install-artifact $model_dir/model.gguf $CHESS_LLAMA_TEST_CHECKSUM https://example.invalid/model.gguf"
   assert_stderr_contains "[INFO] model: selected profile profile=test-profile source=explicit"
   assert_stderr_contains "file=model.gguf"
   assert_stderr_contains "directory=$model_dir"
-  assert_stderr_contains "[INFO] model: downloading weights"
+  assert_stderr_contains "[INFO] model: installing verified weights"
   assert_stderr_contains "[OK] model: weights installed"
 }
 
-@test "model pull reports the original download exit status" {
+@test "model pull reports a portable artifact installation failure" {
   local runtime_entry=$TEST_ROOT/runtime.js
+  local host_entry=$TEST_ROOT/host-runtime.js
   export CHESS_LLAMA_RUNTIME_ENTRY=$runtime_entry
+  export CHESS_LLAMA_HOST_RUNTIME_ENTRY=$host_entry
   export CHESS_LLAMA_MODEL_DIR=$TEST_ROOT/models
   export CHESS_LLAMA_TEST_CHECKSUM
   CHESS_LLAMA_TEST_CHECKSUM=$(printf 'expected' | sha256sum | awk '{print $1}')
   printf 'placeholder\n' >"$runtime_entry"
+  printf 'placeholder\n' >"$host_entry"
   make_tool node <<'EOF'
+if [[ $1 == "$CHESS_LLAMA_HOST_RUNTIME_ENTRY" && $2 == install-artifact ]]; then
+  printf 'download unavailable\n' >&2
+  exit 22
+fi
 case "$2" in
   profile) printf '{}\n' ;;
   image) printf 'example.invalid/llama@sha256:%064d\n' 0 ;;
@@ -109,30 +117,34 @@ EOF
   make_tool docker <<'EOF'
 exit 0
 EOF
-  make_tool curl <<'EOF'
-exit 22
-EOF
-
   run --separate-stderr "$PROJECT_ROOT/chess-llama" model pull --profile test-profile
 
   [ "$status" -eq 4 ]
-  assert_stderr_contains "[ERROR] model: weight download failed"
+  assert_stderr_contains "[ERROR] model: artifact installation failed"
   assert_stderr_contains "exitCode=22"
 }
 
 @test "model start rejects a healthy server carrying the wrong model" {
   local runtime_entry=$TEST_ROOT/runtime.js
+  local host_entry=$TEST_ROOT/host-runtime.js
   local model_dir=$TEST_ROOT/models
   export CHESS_LLAMA_RUNTIME_ENTRY=$runtime_entry
+  export CHESS_LLAMA_HOST_RUNTIME_ENTRY=$host_entry
   export CHESS_LLAMA_MODEL_DIR=$model_dir
   export CHESS_LLAMA_TEST_TRACE=$TEST_ROOT/trace
   export CHESS_LLAMA_TEST_MODEL_BYTES='verified model'
   CHESS_LLAMA_TEST_CHECKSUM=$(printf '%s' "$CHESS_LLAMA_TEST_MODEL_BYTES" | sha256sum | awk '{print $1}')
   export CHESS_LLAMA_TEST_CHECKSUM
   printf 'placeholder\n' >"$runtime_entry"
+  printf 'placeholder\n' >"$host_entry"
   mkdir -p "$model_dir"
   printf '%s' "$CHESS_LLAMA_TEST_MODEL_BYTES" >"$model_dir/model.gguf"
   make_tool node <<'EOF'
+if [[ $1 == "$CHESS_LLAMA_HOST_RUNTIME_ENTRY" && $2 == hash ]]; then
+  printf '%s\n' "$*" >>"$CHESS_LLAMA_TEST_TRACE"
+  printf '%s\n' "$CHESS_LLAMA_TEST_CHECKSUM"
+  exit 0
+fi
 case "$2" in
   profile) printf '{}\n' ;;
   image) printf 'example.invalid/llama@sha256:%064d\n' 0 ;;
@@ -164,6 +176,7 @@ EOF
   assert_trace_contains "--publish 127.0.0.1:8080:8080"
   assert_trace_contains "--volume $model_dir/model.gguf:/models/current.gguf:ro"
   assert_trace_contains "--env LLAMA_PROFILE_ID=test-profile llama"
+  assert_trace_contains "$host_entry hash $model_dir/model.gguf"
   assert_stderr_contains "[INFO] model: starting runtime profile=test-profile"
   assert_stderr_contains "[OK] model: runtime health check passed"
   assert_stderr_contains "[ERROR] model: loaded model does not match profile"
@@ -242,7 +255,7 @@ EOF
 
   run --separate-stderr "$PROJECT_ROOT/chess-llama" model status --format json
   [ "$status" -eq 0 ]
-  assert_json_equals "$output" '{"containerState":"stopped","healthy":false,"port":8080}'
+  assert_json_equals "$output" '{"provider":"docker-cuda","runtimeState":"stopped","healthy":false,"port":8080}'
   [ -z "$stderr" ]
 
   run --separate-stderr "$PROJECT_ROOT/chess-llama" --verbose model status --format json
@@ -259,7 +272,7 @@ EOF
   run --separate-stderr "$PROJECT_ROOT/chess-llama" model status --format json
 
   [ "$status" -eq 0 ]
-  assert_json_equals "$output" '{"containerState":"unknown","healthy":false,"port":8080}'
+  assert_json_equals "$output" '{"provider":"docker-cuda","runtimeState":"unknown","healthy":false,"port":8080}'
   assert_stderr_contains "[WARN] model: container state probe failed"
   assert_stderr_contains "exitCode=19"
 }
@@ -275,7 +288,7 @@ EOF
   run --separate-stderr "$PROJECT_ROOT/chess-llama" model status --format json
 
   [ "$status" -eq 0 ]
-  assert_json_equals "$output" '{"containerState":"running","healthy":false,"port":8080}'
+  assert_json_equals "$output" '{"provider":"docker-cuda","runtimeState":"running","healthy":false,"port":8080}'
   assert_stderr_contains "[WARN] model: runtime health probe failed"
   assert_stderr_contains "endpoint=http://127.0.0.1:8080/v1/health"
   assert_stderr_contains "exitCode=28"

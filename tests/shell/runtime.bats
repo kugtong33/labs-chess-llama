@@ -21,3 +21,31 @@ load test_helper
   [ "$status" -eq 0 ]
   [ "$output" = "Qwen3-4B-Q4_K_M.gguf" ]
 }
+
+@test "host helpers expose the detected provider and portable operations" {
+  local host_entry=$TEST_ROOT/host-runtime.js
+  printf 'placeholder\n' >"$host_entry"
+  export CHESS_LLAMA_HOST_RUNTIME_ENTRY=$host_entry
+  export CHESS_LLAMA_TEST_TRACE=$TEST_ROOT/trace
+  make_tool node <<'EOF'
+printf '%s\n' "$*" >>"$CHESS_LLAMA_TEST_TRACE"
+case "$2" in
+  provider) printf 'native-metal\n' ;;
+  port-in-use) printf 'true\n' ;;
+  supervise) exit 17 ;;
+esac
+EOF
+
+  run bash -c 'source "$1/scripts/cli/core.sh"; chess_llama_runtime_provider' _ "$PROJECT_ROOT"
+  [ "$status" -eq 0 ]
+  [ "$output" = native-metal ]
+
+  run bash -c 'source "$1/scripts/cli/core.sh"; chess_llama_port_in_use 5173' _ "$PROJECT_ROOT"
+  [ "$status" -eq 0 ]
+
+  run bash -c 'source "$1/scripts/cli/core.sh"; chess_llama_supervise command argument' _ "$PROJECT_ROOT"
+  [ "$status" -eq 17 ]
+  assert_trace_contains "$host_entry provider"
+  assert_trace_contains "$host_entry port-in-use 5173"
+  assert_trace_contains "$host_entry supervise command argument"
+}

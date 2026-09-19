@@ -161,46 +161,22 @@ chess_llama_model_pull() {
   chess_llama_ok model 'llama service image available' image "$CHESS_LLAMA_IMAGE"
 
   local destination=$CHESS_LLAMA_MODEL_DIR/$CHESS_LLAMA_MODEL_FILE
-  local expected actual partial quarantine
+  local expected url result status
   expected=$(chess_llama_profile_field "$profile" sha256) || return
-  if [[ -f $destination ]]; then
-    chess_llama_info model 'checking cached weights' path "$destination"
-    actual=$(sha256sum -- "$destination" | awk '{print $1}')
-    if [[ $actual == "$expected" ]]; then
-      chess_llama_ok model 'weights already installed' path "$destination" checksum "$actual"
-      return
-    fi
-    quarantine=$destination.invalid-$(date +%s%3N)
-    mv -- "$destination" "$quarantine"
-    chess_llama_warn model 'quarantined invalid weights' path "$destination" quarantine "$quarantine" \
-      expected "$expected" actual "$actual"
-  fi
-
-  partial=$destination.partial
-  rm -f -- "$partial"
-  trap 'rm -f -- "${partial:-}"' EXIT INT TERM
-  local url
   url=$(chess_llama_profile_field "$profile" url) || return
-  chess_llama_info model 'downloading weights' source "$(chess_llama_sanitize_url "$url")" destination "$destination"
-  chess_llama_debug_command model curl --fail --show-error --location --retry 3 --output "$partial" "$url"
-  local status
-  if curl --fail --show-error --location --retry 3 --output "$partial" "$url"; then
-    :
+  chess_llama_info model 'installing verified weights' source "$(chess_llama_sanitize_url "$url")" \
+    destination "$destination" expected "$expected"
+  if result=$(chess_llama_install_artifact "$destination" "$expected" "$url"); then
+    if [[ $result == *'"status":"reused"'* ]]; then
+      chess_llama_ok model 'weights already installed' path "$destination" checksum "$expected"
+    else
+      chess_llama_ok model 'weights installed' profile "$profile" path "$destination" checksum "$expected"
+    fi
   else
     status=$?
-    chess_llama_error model 'weight download failed' destination "$destination" exitCode "$status"
+    chess_llama_error model 'artifact installation failed' destination "$destination" exitCode "$status"
     return "$CHESS_LLAMA_EXIT_RUNTIME"
   fi
-  chess_llama_info model 'verifying downloaded weights' path "$partial" expected "$expected"
-  actual=$(sha256sum -- "$partial" | awk '{print $1}')
-  if [[ $actual != "$expected" ]]; then
-    chess_llama_error model 'downloaded weight checksum mismatch' file "$CHESS_LLAMA_MODEL_FILE" expected "$expected" actual "$actual"
-    return "$CHESS_LLAMA_EXIT_RUNTIME"
-  fi
-  sync -f "$partial" 2>/dev/null || true
-  mv -- "$partial" "$destination"
-  trap - EXIT INT TERM
-  chess_llama_ok model 'weights installed' profile "$profile" path "$destination" checksum "$actual"
 }
 
 chess_llama_model_start() {
@@ -221,7 +197,12 @@ chess_llama_model_start() {
     return "$CHESS_LLAMA_EXIT_RUNTIME"
   fi
   chess_llama_info model 'verifying installed weights' path "$destination" expected "$expected"
-  actual=$(sha256sum -- "$destination" | awk '{print $1}')
+  actual=$(chess_llama_hash_file "$destination") || {
+    local status=$?
+    chess_llama_error model 'runtime start failed: unable to hash installed weights' \
+      path "$destination" exitCode "$status"
+    return "$CHESS_LLAMA_EXIT_RUNTIME"
+  }
   if [[ $actual != "$expected" ]]; then
     chess_llama_error model 'runtime start failed: installed weight checksum mismatch' expected "$expected" actual "$actual"
     return "$CHESS_LLAMA_EXIT_RUNTIME"
@@ -306,13 +287,18 @@ chess_llama_model_stop() {
 chess_llama_model_status() {
   chess_llama_parse_format "$@" || return
   chess_llama_resolve_paths
+  local provider
+  provider=$(chess_llama_runtime_provider) || {
+    chess_llama_error model 'runtime provider detection failed'
+    return "$CHESS_LLAMA_EXIT_PREREQUISITE"
+  }
   chess_llama_debug model 'checking runtime status' compose "$CHESS_LLAMA_COMPOSE_FILE" endpoint http://127.0.0.1:8080/v1/health
-  local container_state=stopped healthy=false model_id='' profile_id=''
+  local runtime_state=stopped healthy=false model_id='' profile_id=''
   local ps_output status
   chess_llama_debug_command model docker compose -f "$CHESS_LLAMA_COMPOSE_FILE" ps --status running --format json llama
   if ps_output=$(chess_llama_compose ps --status running --format json llama 2>/dev/null); then
     if [[ -n $ps_output ]]; then
-      container_state=running
+      runtime_state=running
       chess_llama_debug_command model curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8080/v1/health
       if curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8080/v1/health >/dev/null 2>&1; then
         healthy=true
@@ -343,12 +329,12 @@ chess_llama_model_status() {
     fi
   else
     status=$?
-    container_state=unknown
+    runtime_state=unknown
     chess_llama_warn model 'container state probe failed' compose "$CHESS_LLAMA_COMPOSE_FILE" exitCode "$status"
   fi
   local output
-  output=$(MODEL_STATE=$container_state MODEL_HEALTHY=$healthy MODEL_ID=$model_id MODEL_PROFILE=$profile_id node --input-type=module -e '
-    const value = { containerState: process.env.MODEL_STATE, healthy: process.env.MODEL_HEALTHY === "true" };
+  output=$(MODEL_PROVIDER=$provider MODEL_STATE=$runtime_state MODEL_HEALTHY=$healthy MODEL_ID=$model_id MODEL_PROFILE=$profile_id node --input-type=module -e '
+    const value = { provider: process.env.MODEL_PROVIDER, runtimeState: process.env.MODEL_STATE, healthy: process.env.MODEL_HEALTHY === "true" };
     if (process.env.MODEL_ID) value.modelId = process.env.MODEL_ID;
     if (process.env.MODEL_PROFILE) value.profileId = process.env.MODEL_PROFILE;
     value.port = 8080;

@@ -11,6 +11,8 @@ readonly CHESS_LLAMA_EXIT_STORAGE=6
 source "$CHESS_LLAMA_PROJECT_ROOT/scripts/cli/paths.sh"
 # shellcheck source=scripts/cli/output.sh
 source "$CHESS_LLAMA_PROJECT_ROOT/scripts/cli/output.sh"
+# shellcheck source=scripts/cli/host.sh
+source "$CHESS_LLAMA_PROJECT_ROOT/scripts/cli/host.sh"
 # shellcheck source=scripts/cli/web.sh
 source "$CHESS_LLAMA_PROJECT_ROOT/scripts/cli/web.sh"
 # shellcheck source=scripts/cli/database.sh
