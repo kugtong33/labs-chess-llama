@@ -209,72 +209,23 @@ importers:
         specifier: ^4.6.5
         version: 4.6.5
 
-  apps/client:
-    dependencies:
-      '@chess-llama/contracts':
-        specifier: workspace:*
-        version: link:../../packages/contracts
-      '@tanstack/react-query':
-        specifier: ^5.90.16
-        version: 5.102.8(react@19.3.0)
-      react:
-        specifier: ^19.1.1
-        version: 19.3.0
-      react-chessboard:
-        specifier: ^5.8.7
-        version: 5.12.1(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      react-dom:
-        specifier: ^19.1.1
-        version: 19.3.0(react@19.3.0)
-      react-router-dom:
-        specifier: ^7.9.5
-        version: 7.18.3(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-    devDependencies:
-      '@testing-library/jest-dom':
-        specifier: ^6.9.1
-        version: 6.10.0(@testing-library/dom@10.4.2)
-      '@testing-library/react':
-        specifier: ^16.3.0
-        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@testing-library/user-event':
-        specifier: ^14.6.1
-        version: 14.6.7(@testing-library/dom@10.4.2)
-      '@types/react':
-        specifier: ^19.1.16
-        version: 19.3.0
-      '@types/react-dom':
-        specifier: ^19.1.9
-        version: 19.3.0(@types/react@19.3.0)
-      '@vitejs/plugin-react':
-        specifier: ^5.1.1
-        version: 5.2.0(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(tsx@4.23.13)(yaml@2.9.1))
-      jsdom:
-        specifier: ^27.1.0
-        version: 27.4.0
-      vite:
-        specifier: ^8.3.0
-        version: 8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(tsx@4.23.13)(yaml@2.9.1)
-
-  apps/gateway:
+  backend:
     dependencies:
       '@chess-llama/chess-domain':
         specifier: workspace:*
-        version: link:../../packages/chess-domain
+        version: link:../packages/chess-domain
       '@chess-llama/contracts':
         specifier: workspace:*
-        version: link:../../packages/contracts
+        version: link:../packages/contracts
       '@chess-llama/llama-protocol':
         specifier: workspace:*
-        version: link:../../packages/llama-protocol
+        version: link:../packages/llama-protocol
       '@chess-llama/stockfish-adapter':
         specifier: workspace:*
-        version: link:../../packages/stockfish-adapter
+        version: link:../packages/stockfish-adapter
       '@chess-llama/storage':
         specifier: workspace:*
-        version: link:../../packages/storage
-      '@fastify/cors':
-        specifier: ^11.3.0
-        version: 11.3.0
+        version: link:../packages/storage
       fastify:
         specifier: ^5.12.4
         version: 5.12.4
@@ -287,28 +238,6 @@ importers:
       zod:
         specifier: ^4.6.5
         version: 4.6.5
-
-  apps/operations:
-    dependencies:
-      '@chess-llama/chess-domain':
-        specifier: workspace:*
-        version: link:../../packages/chess-domain
-      '@chess-llama/contracts':
-        specifier: workspace:*
-        version: link:../../packages/contracts
-      '@chess-llama/llama-protocol':
-        specifier: workspace:*
-        version: link:../../packages/llama-protocol
-      '@chess-llama/stockfish-adapter':
-        specifier: workspace:*
-        version: link:../../packages/stockfish-adapter
-      '@chess-llama/storage':
-        specifier: workspace:*
-        version: link:../../packages/storage
-    devDependencies:
-      '@types/node':
-        specifier: ^26.5.1
-        version: 26.5.1
 
   packages/chess-domain:
     dependencies:
@@ -330,6 +259,28 @@ importers:
       '@chess-llama/contracts':
         specifier: workspace:*
         version: link:../contracts
+    devDependencies:
+      '@types/node':
+        specifier: ^26.5.1
+        version: 26.5.1
+
+  packages/operations:
+    dependencies:
+      '@chess-llama/chess-domain':
+        specifier: workspace:*
+        version: link:../chess-domain
+      '@chess-llama/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@chess-llama/llama-protocol':
+        specifier: workspace:*
+        version: link:../llama-protocol
+      '@chess-llama/stockfish-adapter':
+        specifier: workspace:*
+        version: link:../stockfish-adapter
+      '@chess-llama/storage':
+        specifier: workspace:*
+        version: link:../storage
     devDependencies:
       '@types/node':
         specifier: ^26.5.1
@@ -372,6 +323,52 @@ importers:
       drizzle-kit:
         specifier: ^0.31.10
         version: 0.31.10
+
+  web:
+    dependencies:
+      '@chess-llama/contracts':
+        specifier: workspace:*
+        version: link:../packages/contracts
+      '@tanstack/react-query':
+        specifier: ^5.90.16
+        version: 5.102.8(react@19.3.0)
+      react:
+        specifier: ^19.1.1
+        version: 19.3.0
+      react-chessboard:
+        specifier: ^5.8.7
+        version: 5.12.1(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      react-dom:
+        specifier: ^19.1.1
+        version: 19.3.0(react@19.3.0)
+      react-router-dom:
+        specifier: ^7.9.5
+        version: 7.18.3(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+    devDependencies:
+      '@testing-library/jest-dom':
+        specifier: ^6.9.1
+        version: 6.10.0(@testing-library/dom@10.4.2)
+      '@testing-library/react':
+        specifier: ^16.3.0
+        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@testing-library/user-event':
+        specifier: ^14.6.1
+        version: 14.6.7(@testing-library/dom@10.4.2)
+      '@types/react':
+        specifier: ^19.1.16
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: ^19.1.9
+        version: 19.3.0(@types/react@19.3.0)
+      '@vitejs/plugin-react':
+        specifier: ^5.1.1
+        version: 5.2.0(vite@8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(tsx@4.23.13)(yaml@2.9.1))
+      jsdom:
+        specifier: ^27.1.0
+        version: 27.4.0
+      vite:
+        specifier: ^8.3.0
+        version: 8.3.0(@types/node@26.5.1)(esbuild@0.28.2)(tsx@4.23.13)(yaml@2.9.1)
 
 packages:
 
@@ -1206,9 +1203,6 @@ packages:
 
   '@fastify/ajv-compiler@4.0.6':
     resolution: {integrity: sha512-NtuzM0SfaMJbGlnjr9LWQUN5LzgSrbB8tf/wRZNas+4E1O/Nmzl53e7ruT61HDZyRCJGC6FxIogmNZO1c5ETBA==}
-
-  '@fastify/cors@11.3.0':
-    resolution: {integrity: sha512-ggQGua+xHv1MvePbPr0v//xLYEsCXbWspquXCJS9Ot5YoRXq8J8ZWzHnxDBVnbtXosvistXo6LtNzOJswf64Fw==}
 
   '@fastify/error@4.2.0':
     resolution: {integrity: sha512-RSo3sVDXfHskiBZKBPRgnQTtIqpi/7zhJOEmAxCiBcM7d0uwdGdxLlsCaLzGs8v8NnxIRlfG0N51p5yFaOentQ==}
@@ -3733,11 +3727,6 @@ snapshots:
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
       fast-uri: 4.1.4
-
-  '@fastify/cors@11.3.0':
-    dependencies:
-      fastify-plugin: 6.0.0
-      toad-cache: 3.7.4
 
   '@fastify/error@4.2.0': {}
 

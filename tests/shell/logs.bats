@@ -36,13 +36,13 @@ EOF
   assert_stderr_contains "layer=all"
 }
 
-@test "logs follow filters every concrete layer at the gateway URL" {
+@test "logs follow filters every concrete layer at the backend URL" {
   trace_stream_entry
   export CHESS_LLAMA_TEST_TRACE=$TEST_ROOT/trace
   successful_follower_tools
 
   local layer
-  for layer in client gateway stockfish llama storage; do
+  for layer in web backend stockfish llama storage; do
     run --separate-stderr "$PROJECT_ROOT/chess-llama" logs follow --layer "$layer"
 
     [ "$status" -eq 0 ]
@@ -122,7 +122,7 @@ EOF
   assert_stderr_contains "exitCode=22"
 }
 
-@test "logs follow maps a gateway connection failure to health exit code" {
+@test "logs follow maps a backend connection failure to health exit code" {
   trace_stream_entry
   make_tool curl <<'EOF'
 exit 22

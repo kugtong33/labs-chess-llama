@@ -7,9 +7,9 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { GameService } from '../../apps/gateway/src/game-service.js';
-import { GameLock } from '../../apps/gateway/src/game-lock.js';
-import { buildApp } from '../../apps/gateway/src/app.js';
+import { GameService } from '../../backend/src/game-service.js';
+import { GameLock } from '../../backend/src/game-lock.js';
+import { buildApp } from '../../backend/src/app.js';
 import { LlamaCppClient } from '../../packages/llama-protocol/src/index.js';
 import type {
   AnalysisRequest,
@@ -25,7 +25,7 @@ import {
 
 const host = '127.0.0.1';
 const llamaPort = 18_080;
-const gatewayPort = 3_001;
+const backendPort = 3_001;
 const temporaryRoot = await mkdtemp(join(tmpdir(), 'chess-llama-e2e-'));
 let failuresRemaining = 0;
 let delayNextCompletion = false;
@@ -60,8 +60,7 @@ const app = buildApp({
   settings,
   config: {
     host,
-    port: gatewayPort,
-    clientOrigin: 'http://127.0.0.1:5173',
+    port: backendPort,
     databasePath: join(temporaryRoot, 'chess-llama.sqlite'),
     llamaBaseUrl: `http://${host}:${llamaPort}`,
     logLevel: 'warn',
@@ -73,7 +72,7 @@ const app = buildApp({
     model: (signal) => selector.health(signal),
   },
 });
-await app.listen({ host, port: gatewayPort });
+await app.listen({ host, port: backendPort });
 
 let closing: Promise<void> | undefined;
 const close = () => {

@@ -4,6 +4,7 @@ import {
   CreateGameRequestSchema,
   DecisionTraceEventSchema,
   GameViewSchema,
+  HealthResponseSchema,
   SettingsSchema,
   SubmitMoveRequestSchema,
 } from './index.js';
@@ -45,6 +46,26 @@ describe('public contracts', () => {
     ).toThrow();
   });
 
+  it('names the API service backend in health responses', () => {
+    expect(
+      HealthResponseSchema.parse({
+        status: 'ready',
+        components: {
+          backend: { status: 'ready' },
+          database: { status: 'ready' },
+          stockfish: { status: 'ready' },
+          model: {
+            status: 'ready',
+            modelId: 'model',
+            profileId: 'profile',
+            quantization: 'Q4_K_M',
+            backend: 'CUDA',
+          },
+        },
+      }).components.backend,
+    ).toEqual({ status: 'ready' });
+  });
+
   it('accepts a strict, versioned llama retry trace event', () => {
     const event = {
       schemaVersion: 1,
@@ -66,9 +87,9 @@ describe('public contracts', () => {
   });
 
   it.each([
-    ['client', 'move_submitted', 'completed', {}],
+    ['web', 'move_submitted', 'completed', {}],
     [
-      'gateway',
+      'backend',
       'ai_turn_started',
       'running',
       { fen: 'fen', sanHistory: ['e4'], candidateLimit: 5, moveTimeMs: 100 },

@@ -255,11 +255,11 @@ EOF
   [ "$status" -eq 17 ]
   assert_stderr_contains "[OK] dev: prerequisites passed"
   assert_stderr_contains "[INFO] dev: reusing model runtime profile=test-profile"
-  assert_stderr_contains "[INFO] dev: starting gateway url=http://127.0.0.1:3001"
-  assert_stderr_contains "[INFO] dev: reusing client url=http://127.0.0.1:5173"
+  assert_stderr_contains "[INFO] dev: starting backend url=http://127.0.0.1:3001"
+  assert_stderr_contains "[INFO] dev: reusing web url=http://127.0.0.1:5173"
   assert_stderr_contains "[INFO] dev: service topology configured"
   [[ $stderr != *"[OK] dev: stack available"* ]]
-  assert_stderr_contains "[ERROR] dev: managed service exited service=gateway exitCode=17"
+  assert_stderr_contains "[ERROR] dev: managed service exited service=backend exitCode=17"
 }
 
 @test "dev enables decision tracing by default and honors an explicit zero" {
@@ -330,15 +330,15 @@ EOF
 }
 
 @test "dev isolates children and terminates process groups in reverse order" {
-  local dev_source client_prefix gateway_prefix
+  local dev_source web_prefix backend_prefix
   dev_source=$(<"$PROJECT_ROOT/scripts/cli/dev.sh")
 
-  [[ $dev_source == *'setsid --wait "$CHESS_LLAMA_PROJECT_ROOT/chess-llama" gateway start &'* ]]
-  [[ $dev_source == *'setsid --wait "$CHESS_LLAMA_PROJECT_ROOT/chess-llama" client dev &'* ]]
-  [[ $dev_source == *'"$CHESS_LLAMA_DEV_CLIENT_PID"'* ]]
-  [[ $dev_source == *'"$CHESS_LLAMA_DEV_GATEWAY_PID"'* ]]
-  client_prefix=${dev_source%%'"$CHESS_LLAMA_DEV_CLIENT_PID"'*}
-  gateway_prefix=${dev_source%%'"$CHESS_LLAMA_DEV_GATEWAY_PID"'*}
-  [ "${#client_prefix}" -lt "${#gateway_prefix}" ]
+  [[ $dev_source == *'setsid --wait "$CHESS_LLAMA_PROJECT_ROOT/chess-llama" backend start &'* ]]
+  [[ $dev_source == *'setsid --wait "$CHESS_LLAMA_PROJECT_ROOT/chess-llama" web dev &'* ]]
+  [[ $dev_source == *'"$CHESS_LLAMA_DEV_WEB_PID"'* ]]
+  [[ $dev_source == *'"$CHESS_LLAMA_DEV_BACKEND_PID"'* ]]
+  web_prefix=${dev_source%%'"$CHESS_LLAMA_DEV_WEB_PID"'*}
+  backend_prefix=${dev_source%%'"$CHESS_LLAMA_DEV_BACKEND_PID"'*}
+  [ "${#web_prefix}" -lt "${#backend_prefix}" ]
   [[ $dev_source == *'kill -TERM -- "-$pid"'* ]]
 }

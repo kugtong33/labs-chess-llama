@@ -15,7 +15,7 @@ EOF
 
 chess_llama_database_main() {
   local command=${1:-}
-  local entry=${CHESS_LLAMA_DATABASE_ENTRY:-$CHESS_LLAMA_PROJECT_ROOT/apps/operations/dist/database.js}
+  local entry=${CHESS_LLAMA_DATABASE_ENTRY:-$CHESS_LLAMA_PROJECT_ROOT/packages/operations/dist/database.js}
   case "$command" in
     '' | -h | --help | help)
       chess_llama_database_help

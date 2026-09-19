@@ -3,7 +3,7 @@
 load test_helper
 
 @test "built runtime CLI exposes manifest values" {
-  local runtime_entry=$PROJECT_ROOT/apps/operations/dist/runtime.js
+  local runtime_entry=$PROJECT_ROOT/packages/operations/dist/runtime.js
   local manifest=$PROJECT_ROOT/config/runtime-manifest.json
 
   [ -f "$runtime_entry" ]

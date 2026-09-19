@@ -109,7 +109,7 @@ chess_llama_doctor_human_report() {
       ["migration", "Database migration"],
       ["model-installed", "Model weights"],
       ["model-health", "Model health"],
-      ["gateway-health", "Gateway health"],
+      ["backend-health", "Backend health"],
     ]);
     const labelFor = (check) => check.name.startsWith("port:")
       ? `Port ${check.name.slice("port:".length)}`
@@ -253,7 +253,7 @@ EOF
   chess_llama_doctor_port 3001
   chess_llama_doctor_port 8080
 
-  local database_entry=${CHESS_LLAMA_DATABASE_ENTRY:-$CHESS_LLAMA_PROJECT_ROOT/apps/operations/dist/database.js}
+  local database_entry=${CHESS_LLAMA_DATABASE_ENTRY:-$CHESS_LLAMA_PROJECT_ROOT/packages/operations/dist/database.js}
   local detail
   chess_llama_debug doctor 'checking migration state' entry "$database_entry" database "$CHESS_LLAMA_DATABASE_FILE"
   if [[ -f $database_entry ]] && detail=$(node "$database_entry" status 2>&1); then
@@ -286,11 +286,11 @@ EOF
   else
     chess_llama_doctor_add model-health false 'health endpoint unavailable' false
   fi
-  chess_llama_debug doctor 'checking service health' service=gateway endpoint http://127.0.0.1:3001/api/health
+  chess_llama_debug doctor 'checking service health' service=backend endpoint http://127.0.0.1:3001/api/health
   if curl --fail --silent --show-error --max-time 2 http://127.0.0.1:3001/api/health >/dev/null 2>&1; then
-    chess_llama_doctor_add gateway-health true 'HTTP 200' false
+    chess_llama_doctor_add backend-health true 'HTTP 200' false
   else
-    chess_llama_doctor_add gateway-health false 'health endpoint unavailable' false
+    chess_llama_doctor_add backend-health false 'health endpoint unavailable' false
   fi
 
   local report

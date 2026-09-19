@@ -8,10 +8,10 @@ chess_llama_logs_help() {
   cat <<'EOF'
 Usage: chess-llama logs follow [options]
 
-follow curated decision traces from the gateway
+follow curated decision traces from the backend
 
 Options:
-  --layer LAYER     client, gateway, stockfish, llama, storage, or all (default: all)
+  --layer LAYER     web, backend, stockfish, llama, storage, or all (default: all)
   --game UUID       follow one game
   --format FORMAT   human or json (default: human)
 EOF
@@ -32,7 +32,7 @@ chess_llama_logs_signal() {
 }
 
 chess_llama_trace_stream_entry() {
-  printf '%s\n' "${CHESS_LLAMA_TRACE_STREAM_ENTRY:-$CHESS_LLAMA_PROJECT_ROOT/apps/operations/dist/trace-stream.js}"
+  printf '%s\n' "${CHESS_LLAMA_TRACE_STREAM_ENTRY:-$CHESS_LLAMA_PROJECT_ROOT/packages/operations/dist/trace-stream.js}"
 }
 
 chess_llama_logs_parse_follow_options() {
@@ -77,7 +77,7 @@ chess_llama_logs_parse_follow_options() {
     shift
   done
   case "$CHESS_LLAMA_LOGS_LAYER" in
-    client | gateway | stockfish | llama | storage | all) ;;
+    web | backend | stockfish | llama | storage | all) ;;
     *)
       chess_llama_input_error "Unsupported trace layer: $CHESS_LLAMA_LOGS_LAYER"
       return

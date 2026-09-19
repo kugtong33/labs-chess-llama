@@ -6,8 +6,8 @@ import {
 } from './game.js';
 
 export const DecisionTraceLayerSchema = z.enum([
-  'client',
-  'gateway',
+  'web',
+  'backend',
   'stockfish',
   'llama',
   'storage',
@@ -50,19 +50,19 @@ const RetryReasonSchema = z.enum([
 
 export const DecisionTraceEventSchema = z.discriminatedUnion('stage', [
   traceVariant(
-    z.literal('client'),
+    z.literal('web'),
     z.literal('move_submitted'),
     z.literal('completed'),
     z.object({}).strict(),
   ),
   traceVariant(
-    z.literal('client'),
+    z.literal('web'),
     z.literal('request_cancelled'),
     z.literal('cancelled'),
     EmptyDataSchema,
   ),
   traceVariant(
-    z.literal('gateway'),
+    z.literal('backend'),
     z.literal('ai_turn_started'),
     z.literal('running'),
     z
@@ -75,7 +75,7 @@ export const DecisionTraceEventSchema = z.discriminatedUnion('stage', [
       .strict(),
   ),
   traceVariant(
-    z.literal('gateway'),
+    z.literal('backend'),
     z.literal('ai_turn_completed'),
     z.literal('completed'),
     z
@@ -85,7 +85,7 @@ export const DecisionTraceEventSchema = z.discriminatedUnion('stage', [
       .strict(),
   ),
   traceVariant(
-    z.literal('gateway'),
+    z.literal('backend'),
     z.literal('ai_turn_failed'),
     z.literal('failed'),
     z

@@ -12,7 +12,7 @@ export const HealthResponseSchema = z
     status: z.enum(['ready', 'loading', 'degraded']),
     components: z
       .object({
-        gateway: ComponentHealthSchema,
+        backend: ComponentHealthSchema,
         database: ComponentHealthSchema,
         stockfish: ComponentHealthSchema,
         model: ComponentHealthSchema.extend({

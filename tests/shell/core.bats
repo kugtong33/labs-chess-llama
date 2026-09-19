@@ -6,8 +6,8 @@ load test_helper
   run --separate-stderr "$PROJECT_ROOT/chess-llama" --help
 
   [ "$status" -eq 0 ]
-  assert_output_contains "local hybrid chess gateway and runtime"
-  for namespace in client db dev doctor gateway logs model; do
+  assert_output_contains "local hybrid chess backend and runtime"
+  for namespace in backend db dev doctor logs model web; do
     assert_output_contains "$namespace"
   done
   assert_output_contains "--verbose"
@@ -38,10 +38,10 @@ load test_helper
 }
 
 @test "verbose is rejected after a namespace" {
-  run --separate-stderr "$PROJECT_ROOT/chess-llama" client --verbose
+  run --separate-stderr "$PROJECT_ROOT/chess-llama" web --verbose
 
   [ "$status" -eq 2 ]
-  assert_stderr_contains "Unknown client command: --verbose"
+  assert_stderr_contains "Unknown web command: --verbose"
 }
 
 @test "debug command rendering redacts URL credentials queries and secret arguments" {
@@ -65,7 +65,7 @@ load test_helper
   # The command source is intentionally deferred to the nested shell.
   # shellcheck disable=SC2016
   run --separate-stderr env CHESS_LLAMA_LOG_LEVEL=debug bash -c \
-    'source "$1"; chess_llama_debug_command gateway env api_token=hidden node server.js' \
+    'source "$1"; chess_llama_debug_command backend env api_token=hidden node server.js' \
     _ "$PROJECT_ROOT/scripts/cli/output.sh"
 
   [ "$status" -eq 0 ]
@@ -91,7 +91,7 @@ load test_helper
   # The command source is intentionally deferred to the nested shell.
   # shellcheck disable=SC2016
   run --separate-stderr env CHESS_LLAMA_LOG_LEVEL=debug bash -c \
-    'source "$1"; chess_llama_debug_command gateway env LLAMA_BASE_URL="https://user:password@example.test/v1?token=hidden#fragment" node --url="https://user:password@example.test/model?token=hidden#fragment"' \
+    'source "$1"; chess_llama_debug_command backend env LLAMA_BASE_URL="https://user:password@example.test/v1?token=hidden#fragment" node --url="https://user:password@example.test/model?token=hidden#fragment"' \
     _ "$PROJECT_ROOT/scripts/cli/output.sh"
 
   [ "$status" -eq 0 ]

@@ -19,7 +19,7 @@ EOF
 }
 
 chess_llama_runtime_entry() {
-  printf '%s\n' "${CHESS_LLAMA_RUNTIME_ENTRY:-$CHESS_LLAMA_PROJECT_ROOT/apps/operations/dist/runtime.js}"
+  printf '%s\n' "${CHESS_LLAMA_RUNTIME_ENTRY:-$CHESS_LLAMA_PROJECT_ROOT/packages/operations/dist/runtime.js}"
 }
 
 chess_llama_runtime_value() {
@@ -62,7 +62,7 @@ chess_llama_parse_profile_option() {
 }
 
 chess_llama_preferred_profile() {
-  local database_entry=${CHESS_LLAMA_DATABASE_ENTRY:-$CHESS_LLAMA_PROJECT_ROOT/apps/operations/dist/database.js}
+  local database_entry=${CHESS_LLAMA_DATABASE_ENTRY:-$CHESS_LLAMA_PROJECT_ROOT/packages/operations/dist/database.js}
   if [[ -f $database_entry ]]; then
     local preference
     if preference=$(node "$database_entry" preferred-profile 2>/dev/null); then
@@ -82,7 +82,7 @@ chess_llama_select_profile() {
   local source=explicit
   if [[ -z $profile ]]; then
     source=settings
-    local database_entry=${CHESS_LLAMA_DATABASE_ENTRY:-$CHESS_LLAMA_PROJECT_ROOT/apps/operations/dist/database.js}
+    local database_entry=${CHESS_LLAMA_DATABASE_ENTRY:-$CHESS_LLAMA_PROJECT_ROOT/packages/operations/dist/database.js}
     local preference=''
     if [[ -f $database_entry ]]; then
       preference=$(node "$database_entry" preferred-profile 2>/dev/null) || preference=''
@@ -421,7 +421,7 @@ chess_llama_model_benchmark() {
     return
   fi
 
-  local entry=${CHESS_LLAMA_BENCHMARK_ENTRY:-$CHESS_LLAMA_PROJECT_ROOT/apps/operations/dist/benchmark.js}
+  local entry=${CHESS_LLAMA_BENCHMARK_ENTRY:-$CHESS_LLAMA_PROJECT_ROOT/packages/operations/dist/benchmark.js}
   chess_llama_require_operations_entry "$entry" model || return
   chess_llama_resolve_paths
   export CHESS_LLAMA_PROJECT_ROOT

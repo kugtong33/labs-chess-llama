@@ -11,12 +11,12 @@ readonly CHESS_LLAMA_EXIT_STORAGE=6
 source "$CHESS_LLAMA_PROJECT_ROOT/scripts/cli/paths.sh"
 # shellcheck source=scripts/cli/output.sh
 source "$CHESS_LLAMA_PROJECT_ROOT/scripts/cli/output.sh"
-# shellcheck source=scripts/cli/client.sh
-source "$CHESS_LLAMA_PROJECT_ROOT/scripts/cli/client.sh"
+# shellcheck source=scripts/cli/web.sh
+source "$CHESS_LLAMA_PROJECT_ROOT/scripts/cli/web.sh"
 # shellcheck source=scripts/cli/database.sh
 source "$CHESS_LLAMA_PROJECT_ROOT/scripts/cli/database.sh"
-# shellcheck source=scripts/cli/gateway.sh
-source "$CHESS_LLAMA_PROJECT_ROOT/scripts/cli/gateway.sh"
+# shellcheck source=scripts/cli/backend.sh
+source "$CHESS_LLAMA_PROJECT_ROOT/scripts/cli/backend.sh"
 # shellcheck source=scripts/cli/logs.sh
 source "$CHESS_LLAMA_PROJECT_ROOT/scripts/cli/logs.sh"
 # shellcheck source=scripts/cli/model.sh
@@ -30,16 +30,16 @@ chess_llama_help() {
   cat <<'EOF'
 Usage: chess-llama [options] [command]
 
-local hybrid chess gateway and runtime
+local hybrid chess backend and runtime
 
 Commands:
-  client             manage the browser client
+  backend            manage the backend
   db                 manage the SQLite database
   dev                start the local development stack
   doctor             check local prerequisites
-  gateway            manage the gateway
   logs               follow curated decision traces
   model              manage the local model
+  web                manage the browser web application
   help [command]     display help for command
 
 Options:
@@ -89,13 +89,13 @@ chess_llama_main() {
         chess_llama_main "$namespace" --help
       fi
       ;;
-    client)
+    web)
       shift
-      chess_llama_client_main "$@"
+      chess_llama_web_main "$@"
       ;;
-    gateway)
+    backend)
       shift
-      chess_llama_gateway_main "$@"
+      chess_llama_backend_main "$@"
       ;;
     logs)
       shift

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 CHESS_LLAMA_DEV_MODEL_OWNED=false
-CHESS_LLAMA_DEV_GATEWAY_PID=''
-CHESS_LLAMA_DEV_CLIENT_PID=''
+CHESS_LLAMA_DEV_BACKEND_PID=''
+CHESS_LLAMA_DEV_WEB_PID=''
 CHESS_LLAMA_DEV_CLEANED=false
 CHESS_LLAMA_DEV_SHUTDOWN_REASON='command exit'
 
@@ -13,8 +13,8 @@ chess_llama_dev_cleanup() {
   CHESS_LLAMA_DEV_CLEANED=true
   chess_llama_info dev 'cleaning up owned resources' reason "$CHESS_LLAMA_DEV_SHUTDOWN_REASON"
   local pid service index
-  local -a pids=("$CHESS_LLAMA_DEV_CLIENT_PID" "$CHESS_LLAMA_DEV_GATEWAY_PID")
-  local -a services=(client gateway)
+  local -a pids=("$CHESS_LLAMA_DEV_WEB_PID" "$CHESS_LLAMA_DEV_BACKEND_PID")
+  local -a services=(web backend)
   for index in 0 1; do
     pid=${pids[$index]}
     service=${services[$index]}
@@ -71,8 +71,8 @@ chess_llama_dev_main() {
   fi
 
   CHESS_LLAMA_DEV_MODEL_OWNED=false
-  CHESS_LLAMA_DEV_GATEWAY_PID=''
-  CHESS_LLAMA_DEV_CLIENT_PID=''
+  CHESS_LLAMA_DEV_BACKEND_PID=''
+  CHESS_LLAMA_DEV_WEB_PID=''
   CHESS_LLAMA_DEV_CLEANED=false
   CHESS_LLAMA_DEV_SHUTDOWN_REASON='command exit'
   trap 'chess_llama_dev_signal INT' INT
@@ -98,44 +98,44 @@ chess_llama_dev_main() {
     chess_llama_info dev 'reusing model runtime' profile "$model_profile" url http://127.0.0.1:8080
   fi
 
-  chess_llama_debug dev 'probing gateway' endpoint http://127.0.0.1:3001/api/health
+  chess_llama_debug dev 'probing backend' endpoint http://127.0.0.1:3001/api/health
   if ! curl --fail --silent --show-error --max-time 1 http://127.0.0.1:3001/api/health >/dev/null 2>&1; then
-    chess_llama_info dev 'starting gateway' url http://127.0.0.1:3001 database "$CHESS_LLAMA_DATABASE_FILE"
-    setsid --wait "$CHESS_LLAMA_PROJECT_ROOT/chess-llama" gateway start &
-    CHESS_LLAMA_DEV_GATEWAY_PID=$!
-    chess_llama_debug dev 'gateway process started' pid "$CHESS_LLAMA_DEV_GATEWAY_PID"
+    chess_llama_info dev 'starting backend' url http://127.0.0.1:3001 database "$CHESS_LLAMA_DATABASE_FILE"
+    setsid --wait "$CHESS_LLAMA_PROJECT_ROOT/chess-llama" backend start &
+    CHESS_LLAMA_DEV_BACKEND_PID=$!
+    chess_llama_debug dev 'backend process started' pid "$CHESS_LLAMA_DEV_BACKEND_PID"
   else
-    chess_llama_info dev 'reusing gateway' url http://127.0.0.1:3001
+    chess_llama_info dev 'reusing backend' url http://127.0.0.1:3001
   fi
 
-  chess_llama_debug dev 'probing client port' port 5173
+  chess_llama_debug dev 'probing web port' port 5173
   if ! ss -ltn 2>/dev/null | awk '{print $4}' | grep -Eq '(^|:)5173$'; then
-    chess_llama_info dev 'starting client' url http://127.0.0.1:5173
-    setsid --wait "$CHESS_LLAMA_PROJECT_ROOT/chess-llama" client dev &
-    CHESS_LLAMA_DEV_CLIENT_PID=$!
-    chess_llama_debug dev 'client process started' pid "$CHESS_LLAMA_DEV_CLIENT_PID"
+    chess_llama_info dev 'starting web' url http://127.0.0.1:5173
+    setsid --wait "$CHESS_LLAMA_PROJECT_ROOT/chess-llama" web dev &
+    CHESS_LLAMA_DEV_WEB_PID=$!
+    chess_llama_debug dev 'web process started' pid "$CHESS_LLAMA_DEV_WEB_PID"
   else
-    chess_llama_info dev 'reusing client' url http://127.0.0.1:5173
+    chess_llama_info dev 'reusing web' url http://127.0.0.1:5173
   fi
 
-  chess_llama_info dev 'service topology configured' client http://127.0.0.1:5173 \
-    gateway http://127.0.0.1:3001 model http://127.0.0.1:8080
+  chess_llama_info dev 'service topology configured' web http://127.0.0.1:5173 \
+    backend http://127.0.0.1:3001 model http://127.0.0.1:8080
 
   local -a children=()
-  [[ -n $CHESS_LLAMA_DEV_GATEWAY_PID ]] && children+=("$CHESS_LLAMA_DEV_GATEWAY_PID")
-  [[ -n $CHESS_LLAMA_DEV_CLIENT_PID ]] && children+=("$CHESS_LLAMA_DEV_CLIENT_PID")
+  [[ -n $CHESS_LLAMA_DEV_BACKEND_PID ]] && children+=("$CHESS_LLAMA_DEV_BACKEND_PID")
+  [[ -n $CHESS_LLAMA_DEV_WEB_PID ]] && children+=("$CHESS_LLAMA_DEV_WEB_PID")
   local status=0
   if ((${#children[@]})); then
     chess_llama_info dev 'supervising managed services' count "${#children[@]}" \
-      gatewayPid "${CHESS_LLAMA_DEV_GATEWAY_PID:-reused}" clientPid "${CHESS_LLAMA_DEV_CLIENT_PID:-reused}"
+      backendPid "${CHESS_LLAMA_DEV_BACKEND_PID:-reused}" webPid "${CHESS_LLAMA_DEV_WEB_PID:-reused}"
     if wait -n "${children[@]}"; then
       status=0
     else
       status=$?
     fi
     local -a exited=()
-    [[ -n $CHESS_LLAMA_DEV_GATEWAY_PID ]] && ! kill -0 "$CHESS_LLAMA_DEV_GATEWAY_PID" 2>/dev/null && exited+=(gateway)
-    [[ -n $CHESS_LLAMA_DEV_CLIENT_PID ]] && ! kill -0 "$CHESS_LLAMA_DEV_CLIENT_PID" 2>/dev/null && exited+=(client)
+    [[ -n $CHESS_LLAMA_DEV_BACKEND_PID ]] && ! kill -0 "$CHESS_LLAMA_DEV_BACKEND_PID" 2>/dev/null && exited+=(backend)
+    [[ -n $CHESS_LLAMA_DEV_WEB_PID ]] && ! kill -0 "$CHESS_LLAMA_DEV_WEB_PID" 2>/dev/null && exited+=(web)
     local exited_services=${exited[*]:-unknown}
     CHESS_LLAMA_DEV_SHUTDOWN_REASON="managed service exited: $exited_services"
     if ((status == 0)); then
