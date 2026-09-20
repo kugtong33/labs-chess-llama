@@ -328,11 +328,19 @@ EOF
 
 @test "model benchmark passes every requested profile to the Node operation" {
   local benchmark_entry=$TEST_ROOT/benchmark.js
+  local host_entry=$TEST_ROOT/host-runtime.js
   export CHESS_LLAMA_BENCHMARK_ENTRY=$benchmark_entry
+  export CHESS_LLAMA_HOST_RUNTIME_ENTRY=$host_entry
   export CHESS_LLAMA_TEST_TRACE=$TEST_ROOT/trace
   printf 'placeholder\n' >"$benchmark_entry"
+  printf 'placeholder\n' >"$host_entry"
   make_tool node <<'EOF'
+if [[ $1 == "$CHESS_LLAMA_HOST_RUNTIME_ENTRY" && $2 == provider ]]; then
+  printf 'docker-cuda\n'
+  exit 0
+fi
 printf '%s\n' "$0 $*" >>"$CHESS_LLAMA_TEST_TRACE"
+printf 'CHESS_LLAMA_RUNTIME_BACKEND=%s\n' "${CHESS_LLAMA_RUNTIME_BACKEND-}" >>"$CHESS_LLAMA_TEST_TRACE"
 printf '%s\n' '{"qualified":true,"profiles":[],"status":"PASS"}'
 EOF
 
@@ -343,15 +351,23 @@ EOF
 
   [ "$status" -eq 0 ]
   assert_trace_contains "node $benchmark_entry run small credible"
+  assert_trace_contains 'CHESS_LLAMA_RUNTIME_BACKEND=CUDA'
   assert_output_contains '"qualified":true'
   [ -z "$stderr" ]
 }
 
 @test "model benchmark reports the failing operation exit status" {
   local benchmark_entry=$TEST_ROOT/benchmark.js
+  local host_entry=$TEST_ROOT/host-runtime.js
   export CHESS_LLAMA_BENCHMARK_ENTRY=$benchmark_entry
+  export CHESS_LLAMA_HOST_RUNTIME_ENTRY=$host_entry
   printf 'placeholder\n' >"$benchmark_entry"
+  printf 'placeholder\n' >"$host_entry"
   make_tool node <<'EOF'
+if [[ $1 == "$CHESS_LLAMA_HOST_RUNTIME_ENTRY" && $2 == provider ]]; then
+  printf 'docker-cuda\n'
+  exit 0
+fi
 exit 9
 EOF
 

@@ -45,3 +45,29 @@ describe('demo trace configuration', () => {
     ).toThrow();
   });
 });
+
+describe('llama accelerator metadata', () => {
+  it.each(['CUDA', 'Metal'] as const)('accepts %s', (backend) => {
+    expect(
+      parseBackendConfig({
+        DATABASE_PATH: ':memory:',
+        LLAMA_BACKEND: backend,
+      }).llamaBackend,
+    ).toBe(backend);
+  });
+
+  it('uses null when the launcher did not identify an accelerator', () => {
+    expect(parseBackendConfig({ DATABASE_PATH: ':memory:' }).llamaBackend).toBe(
+      null,
+    );
+  });
+
+  it('rejects invented accelerator labels', () => {
+    expect(() =>
+      parseBackendConfig({
+        DATABASE_PATH: ':memory:',
+        LLAMA_BACKEND: 'native-metal',
+      }),
+    ).toThrow();
+  });
+});

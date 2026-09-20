@@ -27,11 +27,36 @@ chess_llama_doctor_command() {
 chess_llama_doctor_port() {
   local port=$1
   chess_llama_debug doctor 'checking port' port "$port"
-  if ss -ltn 2>/dev/null | awk '{print $4}' | grep -Eq "(^|:)$port$"; then
+  local state
+  if ! state=$(chess_llama_port_state "$port" 2>/dev/null); then
+    chess_llama_doctor_add "port:$port" false 'probe failed' false
+  elif [[ $state == true ]]; then
     chess_llama_doctor_add "port:$port" false 'in use' false
   else
     chess_llama_doctor_add "port:$port" true available false
   fi
+}
+
+chess_llama_doctor_llama_capabilities() {
+  local help flag
+  help=$(llama-server --help 2>&1) || return
+  for flag in --host --port --ctx-size --n-gpu-layers --flash-attn --parallel --alias --no-webui; do
+    [[ $help == *"$flag"* ]] || {
+      printf 'missing required option %s\n' "$flag" >&2
+      return 1
+    }
+  done
+  printf 'required server options available\n'
+}
+
+chess_llama_doctor_metal() {
+  local devices
+  devices=$(llama-server --list-devices 2>&1) || return
+  [[ ${devices,,} == *metal* ]] || {
+    printf 'Metal device was not reported by llama-server\n' >&2
+    return 1
+  }
+  printf '%s\n' "$devices"
 }
 
 chess_llama_doctor_pnpm_version() {
@@ -96,16 +121,17 @@ chess_llama_doctor_human_report() {
       ["compose", "Docker Compose"],
       ["curl", "curl"],
       ["flock", "flock"],
-      ["script", "script"],
-      ["setsid", "setsid"],
-      ["sha256sum", "sha256sum"],
-      ["ss", "ss"],
+      ["provider", "Runtime provider"],
+      ["llama-server", "llama-server"],
+      ["llama-capabilities", "llama-server options"],
+      ["metal", "Metal device"],
       ["nvidia", "NVIDIA container GPU"],
       ["xdg:config", "Config directory"],
       ["xdg:database", "Database directory"],
       ["xdg:backups", "Backup directory"],
       ["xdg:benchmarks", "Benchmark directory"],
       ["xdg:models", "Model directory"],
+      ["xdg:state", "Runtime state directory"],
       ["migration", "Database migration"],
       ["model-installed", "Model weights"],
       ["model-health", "Model health"],
@@ -143,10 +169,14 @@ chess_llama_doctor_human_report() {
         ["docker", "Start Docker and ensure this user can access the Docker daemon."],
         ["compose", "Install or enable the Docker Compose plugin."],
         ["nvidia", "Verify the NVIDIA driver and Container Toolkit, then pull the pinned model image."],
+        ["provider", "Use Linux for Docker/CUDA or an Apple Silicon Mac for native Metal development."],
+        ["llama-server", "Install llama.cpp with brew install llama.cpp."],
+        ["llama-capabilities", "Upgrade llama.cpp with brew upgrade llama.cpp."],
+        ["metal", "Reinstall or upgrade Homebrew llama.cpp and verify that macOS reports a Metal device."],
         ["model-installed", "Run ./chess-llama model pull to install and verify the default model."],
       ]);
       if (commandRemedies.has(check.name)) return commandRemedies.get(check.name);
-      if (["curl", "flock", "script", "setsid", "sha256sum", "ss"].includes(check.name)) {
+      if (["curl", "flock"].includes(check.name)) {
         return `Install the ${check.name} command and ensure it is on PATH.`;
       }
       if (check.name.startsWith("xdg:")) {
@@ -195,7 +225,8 @@ chess_llama_doctor_main() {
   chess_llama_parse_format "$@" || return
   chess_llama_resolve_paths
   chess_llama_debug doctor 'resolved paths' database "$CHESS_LLAMA_DATABASE_FILE" models "$CHESS_LLAMA_MODEL_DIR" \
-    backups "$CHESS_LLAMA_BACKUPS_DIR" benchmarks "$CHESS_LLAMA_BENCHMARKS_DIR" compose "$CHESS_LLAMA_COMPOSE_FILE"
+    backups "$CHESS_LLAMA_BACKUPS_DIR" benchmarks "$CHESS_LLAMA_BENCHMARKS_DIR" state "$CHESS_LLAMA_STATE_DIR" \
+    compose "$CHESS_LLAMA_COMPOSE_FILE"
   CHESS_LLAMA_DOCTOR_VALUES=()
   CHESS_LLAMA_DOCTOR_PREREQUISITES_OK=true
 
@@ -219,19 +250,32 @@ chess_llama_doctor_main() {
   else
     chess_llama_doctor_add pnpm false 'packageManager must declare pnpm@<version> in package.json' true
   fi
-  chess_llama_doctor_command docker true docker info --format '{{.ServerVersion}}'
-  chess_llama_doctor_command compose true docker compose version
-  local tool
-  for tool in curl flock script setsid sha256sum ss; do
-    chess_llama_doctor_command "$tool" true command -v "$tool"
-  done
-
-  local image=''
-  if image=$(chess_llama_runtime_image 2>/dev/null); then
-    chess_llama_doctor_command nvidia true docker run --rm --pull never --gpus all --entrypoint nvidia-smi "$image" -L
+  local provider=''
+  if provider=$(chess_llama_runtime_provider); then
+    chess_llama_doctor_add provider true "$provider" true
   else
-    chess_llama_doctor_add nvidia false 'Runtime manifest operation is unavailable' true
+    chess_llama_doctor_add provider false "${provider:-unsupported platform}" true
+    provider=unsupported
   fi
+  chess_llama_doctor_command curl true command -v curl
+  case "$provider" in
+    docker-cuda)
+      chess_llama_doctor_command docker true docker info --format '{{.ServerVersion}}'
+      chess_llama_doctor_command compose true docker compose version
+      chess_llama_doctor_command flock true command -v flock
+      local image=''
+      if image=$(chess_llama_runtime_image 2>/dev/null); then
+        chess_llama_doctor_command nvidia true docker run --rm --pull never --gpus all --entrypoint nvidia-smi "$image" -L
+      else
+        chess_llama_doctor_add nvidia false 'Runtime manifest operation is unavailable' true
+      fi
+      ;;
+    native-metal)
+      chess_llama_doctor_command llama-server true command -v llama-server
+      chess_llama_doctor_command llama-capabilities true chess_llama_doctor_llama_capabilities
+      chess_llama_doctor_command metal true chess_llama_doctor_metal
+      ;;
+  esac
 
   local name directory
   while read -r name directory; do
@@ -247,6 +291,7 @@ database ${CHESS_LLAMA_DATABASE_FILE%/*}
 backups $CHESS_LLAMA_BACKUPS_DIR
 benchmarks $CHESS_LLAMA_BENCHMARKS_DIR
 models $CHESS_LLAMA_MODEL_DIR
+state $CHESS_LLAMA_STATE_DIR
 EOF
 
   chess_llama_doctor_port 5173
@@ -272,8 +317,9 @@ EOF
   elif [[ ! -f $CHESS_LLAMA_MODEL_DIR/$model_file || ! -r $CHESS_LLAMA_MODEL_DIR/$model_file ]]; then
     chess_llama_doctor_add model-installed false "Model file is not installed: $model_file" true
   else
-    actual=$(sha256sum -- "$CHESS_LLAMA_MODEL_DIR/$model_file" | awk '{print $1}')
-    if [[ $actual == "$expected" ]]; then
+    if ! actual=$(chess_llama_hash_file "$CHESS_LLAMA_MODEL_DIR/$model_file" 2>/dev/null); then
+      chess_llama_doctor_add model-installed false "Unable to hash installed model: $model_file" true
+    elif [[ $actual == "$expected" ]]; then
       chess_llama_doctor_add model-installed true "$model_file checksum verified" true
     else
       chess_llama_doctor_add model-installed false "Installed model checksum mismatch: $model_file" true

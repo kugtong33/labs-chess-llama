@@ -82,10 +82,9 @@ chess_llama_dev_main() {
   local model_status='' model_profile=''
   model_status=$(chess_llama_model_status --format json) || true
   if [[ $model_status != *'"healthy":true'* ]]; then
-    CHESS_LLAMA_DEV_MODEL_OWNED=true
     chess_llama_info dev 'starting model runtime' url http://127.0.0.1:8080
     if (chess_llama_model_start); then
-      :
+      CHESS_LLAMA_DEV_MODEL_OWNED=true
     else
       return $?
     fi
@@ -101,7 +100,7 @@ chess_llama_dev_main() {
   chess_llama_debug dev 'probing backend' endpoint http://127.0.0.1:3001/api/health
   if ! curl --fail --silent --show-error --max-time 1 http://127.0.0.1:3001/api/health >/dev/null 2>&1; then
     chess_llama_info dev 'starting backend' url http://127.0.0.1:3001 database "$CHESS_LLAMA_DATABASE_FILE"
-    setsid --wait "$CHESS_LLAMA_PROJECT_ROOT/chess-llama" backend start &
+    chess_llama_supervise "$CHESS_LLAMA_PROJECT_ROOT/chess-llama" backend start &
     CHESS_LLAMA_DEV_BACKEND_PID=$!
     chess_llama_debug dev 'backend process started' pid "$CHESS_LLAMA_DEV_BACKEND_PID"
   else
@@ -109,9 +108,9 @@ chess_llama_dev_main() {
   fi
 
   chess_llama_debug dev 'probing web port' port 5173
-  if ! ss -ltn 2>/dev/null | awk '{print $4}' | grep -Eq '(^|:)5173$'; then
+  if ! chess_llama_port_in_use 5173; then
     chess_llama_info dev 'starting web' url http://127.0.0.1:5173
-    setsid --wait "$CHESS_LLAMA_PROJECT_ROOT/chess-llama" web dev &
+    chess_llama_supervise "$CHESS_LLAMA_PROJECT_ROOT/chess-llama" web dev &
     CHESS_LLAMA_DEV_WEB_PID=$!
     chess_llama_debug dev 'web process started' pid "$CHESS_LLAMA_DEV_WEB_PID"
   else

@@ -18,8 +18,12 @@ chess_llama_runtime_provider() {
 
 chess_llama_port_in_use() {
   local result
-  result=$(chess_llama_host_runtime port-in-use "$1") || return
+  result=$(chess_llama_port_state "$1") || return
   [[ $result == true ]]
+}
+
+chess_llama_port_state() {
+  chess_llama_host_runtime port-in-use "$1"
 }
 
 chess_llama_hash_file() {

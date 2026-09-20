@@ -412,6 +412,12 @@ chess_llama_model_benchmark() {
   local entry=${CHESS_LLAMA_BENCHMARK_ENTRY:-$CHESS_LLAMA_PROJECT_ROOT/packages/operations/dist/benchmark.js}
   chess_llama_require_operations_entry "$entry" model || return
   chess_llama_resolve_paths
+  local provider
+  provider=$(chess_llama_runtime_provider) || return "$CHESS_LLAMA_EXIT_PREREQUISITE"
+  case "$provider" in
+    docker-cuda) export CHESS_LLAMA_RUNTIME_BACKEND=CUDA ;;
+    native-metal) export CHESS_LLAMA_RUNTIME_BACKEND=Metal ;;
+  esac
   export CHESS_LLAMA_PROJECT_ROOT
   export CHESS_LLAMA_RUNTIME_MANIFEST=$CHESS_LLAMA_PROJECT_ROOT/config/runtime-manifest.json
   local report

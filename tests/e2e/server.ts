@@ -63,6 +63,7 @@ const app = buildApp({
     port: backendPort,
     databasePath: join(temporaryRoot, 'chess-llama.sqlite'),
     llamaBaseUrl: `http://${host}:${llamaPort}`,
+    llamaBackend: null,
     logLevel: 'warn',
     demoTrace: false,
   },

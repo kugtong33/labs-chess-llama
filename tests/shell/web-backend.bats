@@ -19,18 +19,49 @@ load test_helper
 
 @test "backend development uses Node and the resolved database path" {
   local database=$TEST_ROOT/state/chess.sqlite
+  local host_entry=$TEST_ROOT/host-runtime.js
   export CHESS_LLAMA_DATABASE_FILE=$database
+  export CHESS_LLAMA_HOST_RUNTIME_ENTRY=$host_entry
   export CHESS_LLAMA_TEST_TRACE=$TEST_ROOT/trace
-  make_trace_tool node
+  printf 'placeholder\n' >"$host_entry"
+  make_tool node <<'EOF'
+if [[ $1 == "$CHESS_LLAMA_HOST_RUNTIME_ENTRY" && $2 == provider ]]; then
+  printf 'docker-cuda\n'
+  exit 0
+fi
+printf '%s\n' "$0 $*" >>"$CHESS_LLAMA_TEST_TRACE"
+printf 'DATABASE_PATH=%s\n' "${DATABASE_PATH-}" >>"$CHESS_LLAMA_TEST_TRACE"
+printf 'LLAMA_BACKEND=%s\n' "${LLAMA_BACKEND-}" >>"$CHESS_LLAMA_TEST_TRACE"
+EOF
 
   run --separate-stderr "$PROJECT_ROOT/chess-llama" backend dev
 
   [ "$status" -eq 0 ]
   assert_trace_contains "node --import tsx $PROJECT_ROOT/backend/src/main.ts"
   assert_trace_contains "DATABASE_PATH=$database"
+  assert_trace_contains 'LLAMA_BACKEND=CUDA'
   assert_stderr_contains "[INFO] backend: starting development server"
   assert_stderr_contains "database=$database"
   assert_stderr_contains "llamaUrl=http://127.0.0.1:8080"
+}
+
+@test "backend development labels native llama telemetry as Metal" {
+  local host_entry=$TEST_ROOT/host-runtime.js
+  export CHESS_LLAMA_HOST_RUNTIME_ENTRY=$host_entry
+  export CHESS_LLAMA_TEST_TRACE=$TEST_ROOT/trace
+  printf 'placeholder\n' >"$host_entry"
+  make_tool node <<'EOF'
+if [[ $1 == "$CHESS_LLAMA_HOST_RUNTIME_ENTRY" && $2 == provider ]]; then
+  printf 'native-metal\n'
+  exit 0
+fi
+printf 'LLAMA_BACKEND=%s\n' "${LLAMA_BACKEND-}" >>"$CHESS_LLAMA_TEST_TRACE"
+EOF
+
+  run --separate-stderr "$PROJECT_ROOT/chess-llama" backend dev
+
+  [ "$status" -eq 0 ]
+  assert_trace_contains 'LLAMA_BACKEND=Metal'
 }
 
 @test "backend health uses curl and preserves JSON output" {

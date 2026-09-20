@@ -211,6 +211,19 @@ describe('model benchmark', () => {
     ).rejects.toMatchObject({ code: exitCodes.health });
   });
 
+  it('accepts the profile alias reported by a native llama-server', async () => {
+    const harness = await installedBenchmarkHarness();
+
+    await expect(
+      runInstalledBenchmarks({
+        ...harness.options,
+        fixtures: [],
+        loadedModelId: () => Promise.resolve(harness.profile.id),
+        runProfile: () => Promise.resolve(profileReport(harness.profile)),
+      }),
+    ).resolves.toMatchObject({ status: 'FAIL' });
+  });
+
   it('verifies and records the immutable profile artifact identity', async () => {
     const harness = await installedBenchmarkHarness();
     const report = await runInstalledBenchmarks({
@@ -231,6 +244,7 @@ describe('model benchmark', () => {
       contextSize: harness.profile.contextSize,
       experimental: false,
     });
+    expect(report.hardware.accelerator).toBe('Metal');
 
     const corruptManifest: RuntimeManifest = {
       ...harness.options.manifest,
@@ -264,7 +278,7 @@ function report(qualified: boolean): BenchmarkReport {
       cpuModel: 'test cpu',
       logicalCpuCount: 8,
       memoryBytes: 16_000_000_000,
-      accelerator: 'not-probed-by-benchmark',
+      accelerator: 'Metal',
     },
     profiles: [],
     qualified,
@@ -278,6 +292,7 @@ async function installedBenchmarkHarness(): Promise<{
     paths: { modelDir: string; benchmarksDir: string };
     manifest: RuntimeManifest;
     profileIds: string[];
+    runtimeBackend: 'Metal';
   };
 }> {
   const root = await mkdtemp(join(tmpdir(), 'chess-llama-benchmark-'));
@@ -308,6 +323,7 @@ async function installedBenchmarkHarness(): Promise<{
         profiles: [profile],
       },
       profileIds: [profile.id],
+      runtimeBackend: 'Metal' as const,
     },
   };
 }

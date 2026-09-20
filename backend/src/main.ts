@@ -110,7 +110,10 @@ export async function startBackend(): Promise<void> {
     const games = createGameRepository(database);
     const settings = createSettingsRepository(database);
     stockfish = await StockfishJsAnalyzer.create();
-    const selector = new LlamaCppClient({ baseUrl: config.llamaBaseUrl });
+    const selector = new LlamaCppClient({
+      baseUrl: config.llamaBaseUrl,
+      backend: config.llamaBackend ?? undefined,
+    });
     const traceHub = config.demoTrace ? new DecisionTraceHub() : undefined;
     const service = new GameService({
       games,

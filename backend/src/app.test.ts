@@ -185,6 +185,7 @@ function buildTestApp(
       port: 3001,
       databasePath: ':memory:',
       llamaBaseUrl: 'http://127.0.0.1:8080',
+      llamaBackend: null,
       logLevel: 'info',
     },
     traceHub,

@@ -53,6 +53,7 @@ services:
       HOST: 0.0.0.0
       PORT: '3001'
       DATABASE_PATH: /data/chess-llama.sqlite
+      LLAMA_BACKEND: CUDA
       LLAMA_BASE_URL: http://llama:8080
       LOG_LEVEL: ${BACKEND_LOG_LEVEL}
       CHESS_LLAMA_DEMO_TRACE: ${BACKEND_DEMO_TRACE}

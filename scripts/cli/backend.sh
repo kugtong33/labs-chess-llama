@@ -15,8 +15,14 @@ EOF
 
 chess_llama_backend_environment() {
   chess_llama_resolve_paths
+  local provider
+  provider=$(chess_llama_runtime_provider) || return "$CHESS_LLAMA_EXIT_PREREQUISITE"
   export DATABASE_PATH=$CHESS_LLAMA_DATABASE_FILE
   export LLAMA_BASE_URL=http://127.0.0.1:8080
+  case "$provider" in
+    docker-cuda) export LLAMA_BACKEND=CUDA ;;
+    native-metal) export LLAMA_BACKEND=Metal ;;
+  esac
 }
 
 chess_llama_backend_main() {

@@ -114,7 +114,7 @@ export interface BenchmarkReport {
     cpuModel: string | null;
     logicalCpuCount: number;
     memoryBytes: number;
-    accelerator: 'not-probed-by-benchmark';
+    accelerator: 'CUDA' | 'Metal';
   };
   profiles: BenchmarkProfileReport[];
   qualified: boolean;
@@ -145,6 +145,7 @@ export interface InstalledBenchmarkOptions {
   paths: Pick<ChessLlamaPaths, 'benchmarksDir' | 'modelDir'>;
   manifest: RuntimeManifest;
   profileIds: readonly string[];
+  runtimeBackend: 'CUDA' | 'Metal';
   now?: () => Date;
   signal?: AbortSignal;
   fixtures?: readonly BenchmarkFixture[];
@@ -153,6 +154,7 @@ export interface InstalledBenchmarkOptions {
   runProfile?: (
     profile: RuntimeProfile,
     fixtures: readonly BenchmarkFixture[],
+    runtimeBackend: 'CUDA' | 'Metal',
     signal?: AbortSignal,
   ) => Promise<BenchmarkProfileReport>;
   hashFile?: (path: string, signal?: AbortSignal) => Promise<string>;
@@ -234,7 +236,7 @@ export async function runInstalledBenchmarks(
     const loadedModelId = await (options.loadedModelId ?? queryLoadedModelId)(
       options.signal,
     );
-    if (loadedModelId !== profile.file) {
+    if (loadedModelId !== profile.file && loadedModelId !== profile.id) {
       throw new CliFailure(
         `llama.cpp loaded ${loadedModelId}, expected ${profile.file}`,
         exitCodes.health,
@@ -243,6 +245,7 @@ export async function runInstalledBenchmarks(
     const result = await (options.runProfile ?? runProfileBenchmark)(
       profile,
       fixtures,
+      options.runtimeBackend,
       options.signal,
     );
     reports.push({
@@ -270,7 +273,7 @@ export async function runInstalledBenchmarks(
       cpuModel: cpus()[0]?.model ?? null,
       logicalCpuCount: cpus().length,
       memoryBytes: totalmem(),
-      accelerator: 'not-probed-by-benchmark',
+      accelerator: options.runtimeBackend,
     },
     profiles: reports,
     qualified,
@@ -288,6 +291,7 @@ export async function runInstalledBenchmarks(
 async function runProfileBenchmark(
   profile: RuntimeProfile,
   fixtures: readonly BenchmarkFixture[],
+  runtimeBackend: 'CUDA' | 'Metal',
   signal?: AbortSignal,
 ): Promise<BenchmarkProfileReport> {
   const analyzer = await StockfishJsAnalyzer.create();
@@ -295,7 +299,7 @@ async function runProfileBenchmark(
     modelId: profile.file,
     profileId: profile.id,
     quantization: profile.quantization,
-    backend: 'CUDA',
+    backend: runtimeBackend,
   });
   try {
     const positions: BenchmarkPositionResult[] = [];
@@ -546,7 +550,14 @@ async function main(): Promise<void> {
   const manifestFile = process.env.CHESS_LLAMA_RUNTIME_MANIFEST;
   const modelDir = process.env.CHESS_LLAMA_MODEL_DIR;
   const benchmarksDir = process.env.CHESS_LLAMA_BENCHMARKS_DIR;
-  if (!projectRoot || !manifestFile || !modelDir || !benchmarksDir) {
+  const runtimeBackend = process.env.CHESS_LLAMA_RUNTIME_BACKEND;
+  if (
+    !projectRoot ||
+    !manifestFile ||
+    !modelDir ||
+    !benchmarksDir ||
+    (runtimeBackend !== 'CUDA' && runtimeBackend !== 'Metal')
+  ) {
     throw new CliFailure(
       'Benchmark environment is incomplete',
       exitCodes.prerequisite,
@@ -562,6 +573,7 @@ async function main(): Promise<void> {
       paths: { modelDir, benchmarksDir },
       manifest,
       profileIds: process.argv.slice(3),
+      runtimeBackend,
       signal: controller.signal,
       prepareProfile: async (profileId, signal) => {
         try {

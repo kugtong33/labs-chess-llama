@@ -105,6 +105,7 @@ describe('four-service Compose topology', () => {
       CHESS_LLAMA_DEMO_TRACE: 'false',
       DATABASE_PATH: '/data/chess-llama.sqlite',
       HOST: '0.0.0.0',
+      LLAMA_BACKEND: 'CUDA',
       LLAMA_BASE_URL: 'http://llama:8080',
       LOG_LEVEL: 'info',
       NODE_ENV: 'production',
