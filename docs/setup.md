@@ -259,6 +259,31 @@ Status: READY (all required checks passed)
 Open <http://127.0.0.1:5173>. Ctrl-C stops resources started by that invocation
 while preserving models, games, and settings.
 
+## Offline use
+
+Network access is required for the initial dependency and model downloads.
+Linux and WSL2 also pull the pinned CUDA image, while Apple Silicon installs
+llama.cpp through Homebrew. After those artifacts are installed, normal play
+uses only local Stockfish and llama.cpp processes and does not call a hosted AI
+service.
+
+## Project verification
+
+Run the maintained source checks from the repository root:
+
+```bash
+pnpm format:check
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+```
+
+Linux CI additionally validates Compose, Dockerfiles, container security, and
+browser acceptance. macOS CI validates the native Metal provider's portable
+code and shell behavior. Neither CI path replaces the real-hardware acceptance
+below.
+
 ## What `doctor` checks
 
 All platforms check Bash 5, Node.js 24, the package.json pnpm version, curl,

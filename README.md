@@ -1,52 +1,19 @@
 # Chess Llama
 
+## Overview
+
 Chess Llama is a local browser chess game that showcases llama.cpp on consumer
 hardware. Stockfish performs a short CPU search and returns up to five credible
-legal moves; a quantized Qwen3 model must choose one and write the commentary.
-The LLM selects every AI move that is applied—there is no random or silent
-engine fallback.
+legal moves; a quantized Qwen3 model chooses one and writes the commentary. The
+LLM selects every AI move that is applied—there is no random or silent engine
+fallback.
 
-## Runtime architecture
+See the [deployment guide](docs/deployment.md) for service boundaries and
+runtime topologies, the [operations guide](docs/operations.md) for the CLI and
+decision tracing, and the
+[model qualification guide](docs/model-benchmark.md) for model profile policy.
 
-Each service has one clear responsibility:
-
-- **nginx** is the gateway and reverse proxy for the container deployment.
-- **web** serves the React chess game and sends `/api` requests to backend.
-- **backend** owns the API, chess rules, Stockfish, turn serialization,
-  validation, and SQLite; it sends inference requests to llama.
-- **llama** verifies the selected GGUF and provides local llama.cpp inference.
-
-### Linux/WSL2 development
-
-```text
-Browser -> web / Vite (127.0.0.1:5173)
-              `-> /api -> backend (127.0.0.1:3001)
-                              |-> SQLite + Stockfish
-                              `-> Docker llama.cpp / CUDA (127.0.0.1:8080)
-```
-
-### Apple Silicon development
-
-```text
-Browser -> web / Vite (127.0.0.1:5173)
-              `-> /api -> backend (127.0.0.1:3001)
-                              |-> SQLite + Stockfish
-                              `-> native llama-server / Metal (127.0.0.1:8080)
-```
-
-### Four-container deployment
-
-```text
-Browser -> nginx (127.0.0.1:5173)
-             |-> web
-             `-> /api -> backend -> llama.cpp / CUDA
-```
-
-Docker Compose runs `nginx`, `web`, `backend`, and `llama` as separate
-containers. Nginx is the only published service. This deployment is for
-Linux/WSL2 with NVIDIA GPU support; macOS uses the native development topology.
-
-## Platform support
+## Platform Support
 
 | Platform                                         | `./chess-llama dev`           | Docker Compose                   |
 | ------------------------------------------------ | ----------------------------- | -------------------------------- |
@@ -55,10 +22,94 @@ Linux/WSL2 with NVIDIA GPU support; macOS uses the native development topology.
 | Apple Silicon macOS                              | Homebrew llama.cpp with Metal | Not supported                    |
 | Intel macOS                                      | Not supported                 | Not supported                    |
 
-Follow the [setup guide](docs/setup.md) for copy-paste prerequisites for Linux,
-macOS, and Windows with WSL2.
+Apple Silicon development works best with at least 16 GB of unified memory.
+Other Linux distributions may work, but Ubuntu 24.04 is the maintained Linux
+path.
 
-## Quick start
+## Configuration Settings
+
+The committed `.env` defines the complete public configuration surface for the
+four-container deployment:
+
+| Setting              | Default           | Meaning                                   |
+| -------------------- | ----------------- | ----------------------------------------- |
+| `NGINX_PORT`         | `5173`            | Loopback port for the application         |
+| `BACKEND_LOG_LEVEL`  | `info`            | Backend log level                         |
+| `BACKEND_DEMO_TRACE` | `false`           | Enables the curated teaching event stream |
+| `LLAMA_PROFILE_ID`   | `qwen3-4b-q4-k-m` | Model profile from the runtime manifest   |
+| `LLAMA_CONTEXT_SIZE` | `4096`            | llama.cpp context size                    |
+| `LLAMA_GPU_LAYERS`   | `99`              | Layers offloaded to the NVIDIA GPU        |
+
+Edit `.env` before running Docker Compose. Development mode uses XDG-compliant
+paths and platform-aware runtime defaults documented in the
+[operations guide](docs/operations.md#local-paths).
+
+## Prerequisite Installation
+
+Install the prerequisites for one supported platform. The
+[setup guide](docs/setup.md) contains the complete driver, Docker, Homebrew,
+verification, and troubleshooting procedures.
+
+### Ubuntu 24.04 with NVIDIA GPU
+
+Install the host tools and NVIDIA driver:
+
+```bash
+sudo apt update
+sudo apt install -y \
+  ca-certificates curl git gnupg build-essential python3 util-linux \
+  ubuntu-drivers-common
+sudo ubuntu-drivers install
+```
+
+Reboot, verify `nvidia-smi`, then install Docker Engine with the Compose plugin
+and NVIDIA Container Toolkit as described in the setup guide.
+
+### Windows with WSL2 and NVIDIA GPU
+
+In an administrator PowerShell terminal:
+
+```powershell
+wsl --install -d Ubuntu-24.04
+wsl --update
+wsl --set-default-version 2
+```
+
+Install the Windows NVIDIA driver and Docker Desktop, enable Docker Desktop's
+WSL integration for Ubuntu 24.04, then run inside Ubuntu:
+
+```bash
+sudo apt update
+sudo apt install -y ca-certificates curl git build-essential python3 util-linux
+```
+
+Keep the checkout in the WSL filesystem rather than under `/mnt/c`.
+
+### Apple Silicon macOS
+
+```bash
+xcode-select --install
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+brew install bash git llama.cpp
+```
+
+Verify that `uname -m` prints `arm64`, Bash is version 5 or newer, and
+`llama-server --list-devices` includes a Metal device.
+
+### Node.js 24 on every platform
+
+Run these commands in Bash after installing the platform prerequisites:
+
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.7/install.sh | bash
+export NVM_DIR="$([ -z "${XDG_CONFIG_HOME-}" ] && printf %s "${HOME}/.nvm" || printf %s "${XDG_CONFIG_HOME}/nvm")"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+nvm install 24
+nvm alias default 24
+```
+
+## Quick Start
 
 After completing the prerequisites for your platform:
 
@@ -76,74 +127,31 @@ pnpm build
 
 `doctor` must report `READY` before `dev` starts. Open
 <http://127.0.0.1:5173>. Ctrl-C stops the web app, backend, and any model runtime
-started by that `dev` invocation. It does not stop a healthy native llama-server
-that was already running. Model weights and application data remain on disk.
+started by that invocation while preserving models, games, and settings.
 
-See [setup](docs/setup.md#project-setup-all-supported-development-hosts) for
-first-run details and [operations](docs/operations.md) for the complete command
-reference.
+## Container Deployment
 
-## Student decision tracing
-
-The play screen includes a five-stage Decision pipeline: request, backend,
-Stockfish, llama, and saved decision. It streams curated teaching evidence and
-falls back to persisted decisions after refresh or when tracing is unavailable.
-It never renders raw prompts, raw UCI traffic, provider bodies, secrets, or
-private reasoning.
-
-`./chess-llama dev` enables tracing unless `CHESS_LLAMA_DEMO_TRACE=0`.
-Use `./chess-llama logs follow` for the terminal view. `model logs` is separate
-raw llama.cpp operational output and is not browser teaching data.
-
-## Container deployment
-
-On a configured Linux or WSL2 NVIDIA host:
+The four-container deployment is supported on configured Ubuntu or WSL2 hosts
+with an NVIDIA GPU. It runs `nginx`, `web`, `backend`, and `llama`; Nginx is
+the only service with a published host port.
 
 ```bash
 docker compose up --build -d
 docker compose ps
 ```
 
-Open <http://127.0.0.1:5173>. Backend and llama have no host ports. Compose and
-`./chess-llama dev` should not run together because both use port `5173` and
-the local GPU. `docker compose down` preserves SQLite data and weights;
-`docker compose down -v` intentionally removes Compose-managed data. See the
-[deployment guide](docs/deployment.md).
-
-## Model profiles
-
-- `qwen3-4b-q4-k-m` is the recommended default for credible constrained move
-  choices and short commentary.
-- `qwen3-1.7b-q4-k-m` is smaller and experimental. Promote it only after the
-  automated benchmark and human review in
-  [model qualification](docs/model-benchmark.md).
-
-GGUF artifacts are pinned by SHA-256 in `config/runtime-manifest.json`.
-The Linux/WSL2 CUDA image is also pinned by digest. `model pull` verifies the
-GGUF before installation on every platform.
-
-## Offline use
-
-Network access is needed for the initial dependency and model downloads, and
-for the Linux/WSL2 container image pull. Apple Silicon also needs the Homebrew
-llama.cpp formula installed. After those artifacts exist locally, normal play
-does not call a hosted AI service.
-
-## Verification
+Open <http://127.0.0.1:5173>. Do not run Compose beside
+`./chess-llama dev`; both use port `5173` and the local GPU.
 
 ```bash
-pnpm format:check
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm build
+docker compose down
 ```
 
-Linux CI additionally validates Compose, Dockerfiles, container security, and
-browser acceptance. macOS CI validates the native Metal provider's portable
-code and shell behavior, but GitHub-hosted CI does not qualify real model
-inference. Run the documented hardware acceptance on an actual NVIDIA or Apple
-Silicon machine.
+This preserves the SQLite database and downloaded model. Only use
+`docker compose down -v` when intentionally deleting all Compose-managed games,
+settings, and model weights. See the
+[deployment guide](docs/deployment.md) for health checks, logs, updates, and
+recovery.
 
 ## License
 

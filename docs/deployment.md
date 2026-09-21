@@ -1,5 +1,9 @@
 # Compose Deployment
 
+## Runtime architecture
+
+Each service has one clear responsibility:
+
 The root [`compose.yaml`](../compose.yaml) runs exactly four services:
 
 | Service | Responsibility | Host access |
@@ -10,6 +14,36 @@ The root [`compose.yaml`](../compose.yaml) runs exactly four services:
 | `llama` | GGUF verification/download and llama.cpp inference | Internal only (`8080`) |
 
 Nginx sends `/api` traffic to backend and all other traffic to web. Backend calls llama directly over the Compose network. Run every command below from the repository root.
+
+### Linux/WSL2 development
+
+```text
+Browser -> web / Vite (127.0.0.1:5173)
+              `-> /api -> backend (127.0.0.1:3001)
+                              |-> SQLite + Stockfish
+                              `-> Docker llama.cpp / CUDA (127.0.0.1:8080)
+```
+
+### Apple Silicon development
+
+```text
+Browser -> web / Vite (127.0.0.1:5173)
+              `-> /api -> backend (127.0.0.1:3001)
+                              |-> SQLite + Stockfish
+                              `-> native llama-server / Metal (127.0.0.1:8080)
+```
+
+### Four-container deployment
+
+```text
+Browser -> nginx (127.0.0.1:5173)
+             |-> web
+             `-> /api -> backend -> llama.cpp / CUDA
+```
+
+The development topologies expose loopback services directly and do not run
+Nginx. The deployment topology runs all four responsibilities in Docker and
+exposes only Nginx.
 
 ## Requirements
 

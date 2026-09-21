@@ -7,16 +7,60 @@ const repositoryRoot = resolve(import.meta.dirname, '..');
 const read = (path: string) => readFile(resolve(repositoryRoot, path), 'utf8');
 
 describe('maintained platform documentation', () => {
-  it('keeps all three runtime topologies and service responsibilities explicit', async () => {
+  it('keeps the README focused on the seven onboarding sections', async () => {
     const readme = await read('README.md');
 
-    expect(readme).toContain('Linux/WSL2 development');
-    expect(readme).toContain('Apple Silicon development');
-    expect(readme).toContain('Four-container deployment');
-    expect(readme).toMatch(/nginx.+gateway|gateway.+nginx/is);
-    expect(readme).toMatch(/web.+chess game/is);
-    expect(readme).toMatch(/backend.+API/is);
-    expect(readme).toMatch(/llama.+inference/is);
+    expect(
+      [...readme.matchAll(/^## (.+)$/gm)].map((match) => match[1]),
+    ).toEqual([
+      'Overview',
+      'Platform Support',
+      'Configuration Settings',
+      'Prerequisite Installation',
+      'Quick Start',
+      'Container Deployment',
+      'License',
+    ]);
+
+    for (const [name, value] of [
+      ['NGINX_PORT', '5173'],
+      ['BACKEND_LOG_LEVEL', 'info'],
+      ['BACKEND_DEMO_TRACE', 'false'],
+      ['LLAMA_PROFILE_ID', 'qwen3-4b-q4-k-m'],
+      ['LLAMA_CONTEXT_SIZE', '4096'],
+      ['LLAMA_GPU_LAYERS', '99'],
+    ]) {
+      expect(readme).toMatch(
+        new RegExp(`\\|\\s*\`${name}\`\\s*\\|\\s*\`${value}\`\\s*\\|`),
+      );
+    }
+
+    expect(readme).toContain('sudo apt install -y');
+    expect(readme).toContain('wsl --install -d Ubuntu-24.04');
+    expect(readme).toContain('brew install bash git llama.cpp');
+    expect(readme).toContain('nvm install 24');
+    expect(readme).toContain('[setup guide](docs/setup.md)');
+    expect(readme).toContain('[operations guide](docs/operations.md)');
+    expect(readme).toContain('[deployment guide](docs/deployment.md)');
+    expect(readme).toContain(
+      '[model qualification guide](docs/model-benchmark.md)',
+    );
+    expect(readme).toContain('[LICENSE](LICENSE)');
+    expect(readme).toContain(
+      '[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)',
+    );
+  });
+
+  it('keeps all three runtime topologies and service responsibilities explicit', async () => {
+    const deployment = await read('docs/deployment.md');
+
+    expect(deployment).toContain('Linux/WSL2 development');
+    expect(deployment).toContain('Apple Silicon development');
+    expect(deployment).toContain('Four-container deployment');
+    expect(deployment).toMatch(/nginx.+gateway|gateway.+nginx/is);
+    expect(deployment).toMatch(/web.+chess game/is);
+    expect(deployment).toMatch(/backend.+API/is);
+    expect(deployment).toMatch(/llama.+inference/is);
   });
 
   it('provides an Apple Silicon setup that ends in a runnable development stack', async () => {
