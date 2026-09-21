@@ -11,6 +11,7 @@ import {
   aggregateBenchmarkResults,
   benchmarkHumanRows,
   exitCodes,
+  isProfileModelId,
   runInstalledBenchmarks,
   type BenchmarkPositionResult,
   type BenchmarkReport,
@@ -23,6 +24,17 @@ interface PositionFixture {
 }
 
 describe('model benchmark', () => {
+  it('accepts either the artifact filename or native profile alias as the model identity', () => {
+    const profile = {
+      id: 'qwen3-4b-q4-k-m',
+      file: 'Qwen3-4B-Q4_K_M.gguf',
+    };
+
+    expect(isProfileModelId(profile, profile.file)).toBe(true);
+    expect(isProfileModelId(profile, profile.id)).toBe(true);
+    expect(isProfileModelId(profile, 'other-model')).toBe(false);
+  });
+
   it('validates every representative position FEN', async () => {
     const positions = JSON.parse(
       await readFile(

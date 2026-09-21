@@ -132,7 +132,12 @@ export async function startNativeRuntime(
           `Started PID ${pid} does not match the requested llama-server command`,
         );
       }
-      await writeState(options.stateDirectory, state);
+      try {
+        await writeState(options.stateDirectory, state);
+      } catch (error) {
+        await stopOwnedRuntime(state, dependencies);
+        throw error;
+      }
       return state;
     },
   );
@@ -378,9 +383,10 @@ async function inspectProcess(
   pid: number,
 ): Promise<ProcessIdentity | undefined> {
   try {
+    const arguments_ = processInspectionArguments(pid);
     const [started, command] = await Promise.all([
-      execFileAsync('ps', ['-p', String(pid), '-o', 'lstart=']),
-      execFileAsync('ps', ['-p', String(pid), '-o', 'command=']),
+      execFileAsync('ps', arguments_.started),
+      execFileAsync('ps', arguments_.command),
     ]);
     const startedAt = started.stdout.trim();
     const commandLine = command.stdout.trim();
@@ -396,6 +402,17 @@ async function inspectProcess(
     }
     throw error;
   }
+}
+
+export function processInspectionArguments(pid: number): {
+  started: string[];
+  command: string[];
+} {
+  const common = ['-ww', '-p', String(pid), '-o'];
+  return {
+    started: [...common, 'lstart='],
+    command: [...common, 'command='],
+  };
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {

@@ -236,7 +236,7 @@ export async function runInstalledBenchmarks(
     const loadedModelId = await (options.loadedModelId ?? queryLoadedModelId)(
       options.signal,
     );
-    if (loadedModelId !== profile.file && loadedModelId !== profile.id) {
+    if (!isProfileModelId(profile, loadedModelId)) {
       throw new CliFailure(
         `llama.cpp loaded ${loadedModelId}, expected ${profile.file}`,
         exitCodes.health,
@@ -323,7 +323,7 @@ async function runProfileBenchmark(
           modelProfileId: profile.id,
           signal,
         });
-        if (selection.modelId !== profile.file) {
+        if (!isProfileModelId(profile, selection.modelId)) {
           throw new Error(
             `llama.cpp response model changed to ${selection.modelId}; expected ${profile.file}`,
           );
@@ -363,6 +363,13 @@ async function runProfileBenchmark(
   } finally {
     await analyzer.close();
   }
+}
+
+export function isProfileModelId(
+  profile: Pick<RuntimeProfile, 'id' | 'file'>,
+  modelId: string,
+): boolean {
+  return modelId === profile.file || modelId === profile.id;
 }
 
 function loadFixtures(value: unknown): BenchmarkFixture[] {

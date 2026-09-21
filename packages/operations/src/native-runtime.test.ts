@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import {
   nativeRuntimeLogs,
   nativeRuntimeStatus,
+  processInspectionArguments,
   startNativeRuntime,
   stopNativeRuntime,
   type NativeRuntimeDependencies,
@@ -41,6 +42,13 @@ const dependencies = (
 });
 
 describe('native Metal runtime lifecycle', () => {
+  it('requests untruncated command output when inspecting macOS process identity', () => {
+    expect(processInspectionArguments(4312)).toEqual({
+      started: ['-ww', '-p', '4312', '-o', 'lstart='],
+      command: ['-ww', '-p', '4312', '-o', 'command='],
+    });
+  });
+
   it('starts llama-server with loopback-only Metal arguments and persists ownership', async () => {
     const stateDirectory = await mkdtemp(join(tmpdir(), 'chess-llama-native-'));
     let invocation:
@@ -174,6 +182,31 @@ describe('native Metal runtime lifecycle', () => {
       stdout: 'Metal device loaded\nserver ready',
       stderr: '',
     });
+  });
+
+  it('stops a spawned server when ownership state cannot be persisted', async () => {
+    const stateDirectory = await mkdtemp(join(tmpdir(), 'chess-llama-native-'));
+    await writeFile(
+      join(stateDirectory, `.runtime-${process.pid}.json`),
+      'busy',
+    );
+    const signals: NodeJS.Signals[] = [];
+    let running = true;
+
+    await expect(
+      startNativeRuntime(
+        options(stateDirectory),
+        dependencies({
+          inspectProcess: () =>
+            Promise.resolve(running ? processIdentity : undefined),
+          signalProcess: (_pid, signal) => {
+            signals.push(signal);
+            running = false;
+          },
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'EEXIST' });
+    expect(signals).toEqual(['SIGTERM']);
   });
 });
 

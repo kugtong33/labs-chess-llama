@@ -314,6 +314,7 @@ EOF
     CHESS_LLAMA_PROJECT_ROOT=$1
     CHESS_LLAMA_TEST_TRACE=$2
     source "$1/scripts/cli/core.sh"
+    chess_llama_preferred_profile() { printf "test-profile\n"; }
     chess_llama_doctor_main() {
       printf "%s\n" "{\"ok\":true,\"prerequisitesOk\":true,\"checks\":[]}"
     }
@@ -339,6 +340,33 @@ EOF
   [ ! -e "$model_stop_trace" ]
 }
 
+@test "dev refuses a healthy external runtime with the wrong model without stopping it" {
+  local model_stop_trace=$TEST_ROOT/mismatched-external-model-stop
+  run --separate-stderr bash -c '
+    set -Eeuo pipefail
+    CHESS_LLAMA_PROJECT_ROOT=$1
+    CHESS_LLAMA_TEST_TRACE=$2
+    source "$1/scripts/cli/core.sh"
+    chess_llama_doctor_main() {
+      printf "%s\n" "{\"ok\":true,\"prerequisitesOk\":true,\"checks\":[]}"
+    }
+    chess_llama_database_main() { :; }
+    chess_llama_preferred_profile() { printf "expected-profile\n"; }
+    chess_llama_model_status() {
+      printf "%s\n" "{\"provider\":\"native-metal\",\"runtimeState\":\"external\",\"healthy\":true,\"modelId\":\"other-profile\",\"profileId\":\"other-profile\",\"port\":8080}"
+    }
+    chess_llama_model_start() { printf "unsafe start\n" >"$CHESS_LLAMA_TEST_TRACE"; return 99; }
+    chess_llama_model_stop() { printf "unsafe stop\n" >"$CHESS_LLAMA_TEST_TRACE"; return 99; }
+    chess_llama_dev_main
+  ' _ "$PROJECT_ROOT" "$model_stop_trace"
+
+  [ "$status" -eq 5 ]
+  assert_stderr_contains "model runtime profile mismatch"
+  assert_stderr_contains "expected=expected-profile"
+  assert_stderr_contains "loaded=other-profile"
+  [ ! -e "$model_stop_trace" ]
+}
+
 @test "dev enables decision tracing by default and honors an explicit zero" {
   local trace=$TEST_ROOT/dev-trace
   run --separate-stderr bash -c '
@@ -348,7 +376,7 @@ EOF
     source "$1/scripts/cli/core.sh"
     chess_llama_doctor_main() { printf "%s\n" "{\"ok\":true,\"prerequisitesOk\":true,\"checks\":[]}"; }
     chess_llama_database_main() { :; }
-    chess_llama_model_status() { printf "%s\n" "{\"healthy\":true}"; }
+    chess_llama_model_status() { printf "%s\n" "{\"healthy\":true,\"profileId\":\"qwen3-4b-q4-k-m\"}"; }
     curl() { return 22; }
     chess_llama_port_in_use() { return 1; }
     chess_llama_supervise() { printf "trace=%s\n" "$CHESS_LLAMA_DEMO_TRACE" >>"$CHESS_LLAMA_TEST_TRACE"; sleep 0.1; return 17; }
@@ -366,7 +394,7 @@ EOF
     source "$1/scripts/cli/core.sh"
     chess_llama_doctor_main() { printf "%s\n" "{\"ok\":true,\"prerequisitesOk\":true,\"checks\":[]}"; }
     chess_llama_database_main() { :; }
-    chess_llama_model_status() { printf "%s\n" "{\"healthy\":true}"; }
+    chess_llama_model_status() { printf "%s\n" "{\"healthy\":true,\"profileId\":\"qwen3-4b-q4-k-m\"}"; }
     curl() { return 22; }
     chess_llama_port_in_use() { return 1; }
     chess_llama_supervise() { printf "trace=%s\n" "$CHESS_LLAMA_DEMO_TRACE" >"$CHESS_LLAMA_TEST_TRACE"; sleep 0.1; return 17; }

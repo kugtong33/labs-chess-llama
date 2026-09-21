@@ -56,6 +56,14 @@ export function selectRuntimeProvider(
 export async function installVerifiedArtifact(
   options: InstallVerifiedArtifactOptions,
 ): Promise<InstalledArtifact> {
+  return await withOperationLock(`${options.destination}.lock`, async () =>
+    installVerifiedArtifactUnlocked(options),
+  );
+}
+
+async function installVerifiedArtifactUnlocked(
+  options: InstallVerifiedArtifactOptions,
+): Promise<InstalledArtifact> {
   if (!/^[a-f0-9]{64}$/u.test(options.expectedSha256)) {
     throw new Error('Expected SHA-256 must contain 64 lowercase hex digits');
   }
@@ -124,36 +132,55 @@ export async function withOperationLock<T>(
   operation: () => Promise<T>,
 ): Promise<T> {
   await mkdir(dirname(lockPath), { recursive: true });
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    try {
-      await mkdir(lockPath);
-    } catch (error) {
-      if (!isNodeError(error) || error.code !== 'EEXIST') throw error;
-      const owner = await readLockOwner(lockPath);
-      if (owner !== undefined && isProcessAlive(owner)) {
-        throw new Error(
-          'Another model lifecycle operation is already running',
-          {
-            cause: error,
-          },
-        );
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (await createOwnedLock(lockPath)) {
+      try {
+        return await operation();
+      } finally {
+        await rm(lockPath, { recursive: true, force: true });
       }
-      await rm(lockPath, { recursive: true, force: true });
-      continue;
     }
 
-    try {
-      await writeFile(
-        join(lockPath, 'owner.json'),
-        `${JSON.stringify({ pid: process.pid })}\n`,
-        { flag: 'wx' },
-      );
-      return await operation();
-    } finally {
-      await rm(lockPath, { recursive: true, force: true });
+    const owner = await readLockOwner(lockPath);
+    if (owner !== undefined && isProcessAlive(owner)) {
+      throw new Error('Another model lifecycle operation is already running');
     }
+    const stalePath = `${lockPath}.stale-${randomUUID()}`;
+    try {
+      await rename(lockPath, stalePath);
+    } catch (error) {
+      if (isNodeError(error) && error.code === 'ENOENT') continue;
+      throw error;
+    }
+    await rm(stalePath, { recursive: true, force: true });
   }
   throw new Error('Unable to acquire model lifecycle lock');
+}
+
+async function createOwnedLock(lockPath: string): Promise<boolean> {
+  const candidate = `${lockPath}.candidate-${process.pid}-${randomUUID()}`;
+  await mkdir(candidate);
+  try {
+    await writeFile(
+      join(candidate, 'owner.json'),
+      `${JSON.stringify({ pid: process.pid })}\n`,
+      { flag: 'wx' },
+    );
+    try {
+      await rename(candidate, lockPath);
+      return true;
+    } catch (error) {
+      if (
+        isNodeError(error) &&
+        (error.code === 'EEXIST' || error.code === 'ENOTEMPTY')
+      ) {
+        return false;
+      }
+      throw error;
+    }
+  } finally {
+    await rm(candidate, { recursive: true, force: true });
+  }
 }
 
 export async function isPortListening(
@@ -245,7 +272,9 @@ async function readLockOwner(lockPath: string): Promise<number | undefined> {
     const value = JSON.parse(
       await readFile(join(lockPath, 'owner.json'), 'utf8'),
     ) as { pid?: unknown };
-    return typeof value.pid === 'number' && Number.isInteger(value.pid)
+    return typeof value.pid === 'number' &&
+      Number.isInteger(value.pid) &&
+      value.pid > 0
       ? value.pid
       : undefined;
   } catch {

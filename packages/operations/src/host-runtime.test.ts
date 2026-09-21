@@ -73,6 +73,43 @@ describe('host runtime portability', () => {
     expect(fetched).toBe(false);
   });
 
+  it('locks an artifact installation while another download owns its destination', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'chess-llama-artifact-'));
+    const destination = join(directory, 'model.gguf');
+    let releaseDownload!: () => void;
+    const release = new Promise<void>((resolve) => {
+      releaseDownload = resolve;
+    });
+    let downloadStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      downloadStarted = resolve;
+    });
+    const first = installVerifiedArtifact({
+      destination,
+      expectedSha256: sha256('verified model'),
+      sourceUrl: 'https://example.invalid/model.gguf',
+      fetcher: async () => {
+        downloadStarted();
+        await release;
+        return new Response('verified model');
+      },
+    });
+    await started;
+
+    const second = installVerifiedArtifact({
+      destination,
+      expectedSha256: sha256('verified model'),
+      sourceUrl: 'https://example.invalid/model.gguf',
+      fetcher: () => Promise.resolve(new Response('verified model')),
+    });
+
+    await expect(second).rejects.toThrow(
+      'Another model lifecycle operation is already running',
+    );
+    releaseDownload();
+    await expect(first).resolves.toMatchObject({ status: 'downloaded' });
+  });
+
   it('recovers a stale operation lock but rejects a live owner', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'chess-llama-lock-'));
     const lock = join(directory, 'model.lock');

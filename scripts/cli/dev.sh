@@ -79,7 +79,7 @@ chess_llama_dev_main() {
   trap 'chess_llama_dev_signal TERM' TERM
   trap chess_llama_dev_cleanup EXIT
 
-  local model_status='' model_profile=''
+  local model_status='' model_profile='' expected_profile=''
   model_status=$(chess_llama_model_status --format json) || true
   if [[ $model_status != *'"healthy":true'* ]]; then
     chess_llama_info dev 'starting model runtime' url http://127.0.0.1:8080
@@ -94,6 +94,12 @@ chess_llama_dev_main() {
       for await (const chunk of process.stdin) source += chunk;
       process.stdout.write(JSON.parse(source).profileId ?? "unknown");
     ' 2>/dev/null) || model_profile=unknown
+    expected_profile=$(chess_llama_preferred_profile) || return "$CHESS_LLAMA_EXIT_PREREQUISITE"
+    if [[ $model_profile != "$expected_profile" ]]; then
+      chess_llama_error dev 'model runtime profile mismatch' expected "$expected_profile" loaded "$model_profile" \
+        remedy 'stop the external server or load the configured profile'
+      return "$CHESS_LLAMA_EXIT_HEALTH"
+    fi
     chess_llama_info dev 'reusing model runtime' profile "$model_profile" url http://127.0.0.1:8080
   fi
 
