@@ -60,6 +60,7 @@ describe('maintained platform documentation', () => {
     expect(deployment).toMatch(/nginx.+gateway|gateway.+nginx/is);
     expect(deployment).toMatch(/web.+chess game/is);
     expect(deployment).toMatch(/backend.+API/is);
+    expect(deployment).toMatch(/backend.+turn serialization.+validation/is);
     expect(deployment).toMatch(/llama.+inference/is);
   });
 

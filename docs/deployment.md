@@ -10,7 +10,7 @@ The root [`compose.yaml`](../compose.yaml) runs exactly four services:
 | --- | --- | --- |
 | `nginx` | Gateway and reverse proxy | `127.0.0.1:${NGINX_PORT}` |
 | `web` | Serves the built React chess game | Internal only (`4173`) |
-| `backend` | API, chess rules, Stockfish, and SQLite | Internal only (`3001`) |
+| `backend` | API, chess rules, Stockfish, turn serialization, validation, and SQLite | Internal only (`3001`) |
 | `llama` | GGUF verification/download and llama.cpp inference | Internal only (`8080`) |
 
 Nginx sends `/api` traffic to backend and all other traffic to web. Backend calls llama directly over the Compose network. Run every command below from the repository root.
