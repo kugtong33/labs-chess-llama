@@ -17,7 +17,7 @@ setup_native_model_fixture() {
   export CHESS_LLAMA_TEST_TRACE=$TEST_ROOT/trace
   export CHESS_LLAMA_TEST_NATIVE_STATUS='{"runtimeState":"stopped","owned":false}'
   export CHESS_LLAMA_TEST_CHECKSUM
-  CHESS_LLAMA_TEST_CHECKSUM=$(printf 'verified model' | sha256sum | awk '{print $1}')
+  CHESS_LLAMA_TEST_CHECKSUM=$(printf 'verified model' | test_sha256)
   mkdir -p "$CHESS_LLAMA_MODEL_DIR"
   printf '%s' 'verified model' >"$CHESS_LLAMA_MODEL_DIR/model.gguf"
   printf 'placeholder\n' >"$CHESS_LLAMA_RUNTIME_ENTRY"

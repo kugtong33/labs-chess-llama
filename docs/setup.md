@@ -1,84 +1,62 @@
 # Setup
 
-This guide prepares a new machine for Chess Llama and ends with a successful
-`./chess-llama dev` start. Complete one platform section, then follow the
-[project setup](#project-setup-linux-and-wsl2).
+This guide prepares a new machine for `./chess-llama dev`. Complete one
+platform section, install Node.js 24, then follow the shared project setup.
 
 ## Platform support
 
-| Platform | Source development | `./chess-llama dev` | Docker Compose deployment |
-| --- | --- | --- | --- |
-| Ubuntu 24.04 LTS with a supported NVIDIA GPU | Supported | Supported | Supported |
-| Windows 10/11 with Ubuntu 24.04 on WSL2 and a supported NVIDIA GPU | Supported inside WSL2 | Supported inside WSL2 | Supported through Docker Desktop |
-| macOS | Build and static checks only | Not supported | Not supported |
+| Platform | Development runtime | Docker Compose deployment |
+| --- | --- | --- |
+| Ubuntu 24.04 with NVIDIA GPU | Docker llama.cpp with CUDA | Supported |
+| Windows 10/11, Ubuntu 24.04 on WSL2, and NVIDIA GPU | Docker llama.cpp with CUDA | Supported through Docker Desktop |
+| Apple Silicon macOS | Native Homebrew llama.cpp with Metal | Not supported |
+| Intel macOS | Not supported | Not supported |
 
-The complete runtime is CUDA-only. It requires an NVIDIA GPU that is visible to
-Linux containers. Docker Desktop exposes GPUs only on Windows with its WSL2
-backend, so installing Docker Desktop on macOS does not make the llama service
-available. See [Docker Desktop GPU support](https://docs.docker.com/desktop/features/gpu/).
+The default Qwen3-4B Q4_K_M profile needs several gigabytes of disk. On Apple
+Silicon, **16 GB of unified memory or more is recommended** so the model, the
+operating system, and the web/backend processes fit comfortably.
 
-You also need network access for the initial dependency, container-image, and
-model downloads, plus enough free disk space for those artifacts.
+Network access is required for the first dependency and model downloads. Linux
+and WSL2 also download the pinned CUDA container image; macOS installs the
+native llama.cpp executable through Homebrew.
 
 ## Ubuntu 24.04 LTS
 
-These commands are the maintained native Linux path. Other distributions may
-work, but use their official Docker, NVIDIA driver, and NVIDIA Container Toolkit
-instructions rather than translating these `apt` commands.
+Other Linux distributions may work, but Ubuntu 24.04 is the maintained path.
 
 ### 1. Install host tools and the NVIDIA driver
 
 ```bash
 sudo apt update
 sudo apt install -y \
-  ca-certificates \
-  curl \
-  git \
-  gnupg \
-  build-essential \
-  python3 \
-  util-linux \
-  iproute2 \
-  coreutils \
+  ca-certificates curl git gnupg build-essential python3 util-linux \
   ubuntu-drivers-common
 sudo ubuntu-drivers install
 sudo reboot
 ```
 
-After the reboot, confirm that the host driver can see the GPU:
+After rebooting:
 
 ```bash
 nvidia-smi
 ```
 
-If Secure Boot is enabled, complete any Machine Owner Key enrollment requested
-during the reboot. Do not continue until `nvidia-smi` succeeds. Ubuntu documents
-the `ubuntu-drivers` flow in its
+Do not continue until the driver reports the GPU. If Secure Boot requests
+Machine Owner Key enrollment, complete it during the reboot. See Ubuntu's
 [NVIDIA driver guide](https://help.ubuntu.com/community/NvidiaDriversInstallation).
 
 ### 2. Install Docker Engine and Compose
 
-Remove conflicting distro packages if they are installed:
+Remove conflicting packages, add Docker's official repository, and install the
+engine and Compose plugin:
 
 ```bash
-sudo apt remove -y $(
-  dpkg --get-selections \
-    docker.io \
-    docker-compose \
-    docker-compose-v2 \
-    docker-doc \
-    docker-buildx \
-    podman-docker \
-    containerd \
-    runc \
-    | cut -f1
-)
-```
+for package in \
+  docker.io docker-compose docker-compose-v2 docker-doc docker-buildx \
+  podman-docker containerd runc; do
+  sudo apt remove -y "$package"
+done
 
-It is safe if `apt` reports that none of them are installed. Add Docker's
-official repository and install the engine with its Compose plugin:
-
-```bash
 sudo install -m 0755 -d /etc/apt/keyrings
 sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
   -o /etc/apt/keyrings/docker.asc
@@ -95,31 +73,23 @@ EOF
 
 sudo apt update
 sudo apt install -y \
-  docker-ce \
-  docker-ce-cli \
-  containerd.io \
-  docker-buildx-plugin \
+  docker-ce docker-ce-cli containerd.io docker-buildx-plugin \
   docker-compose-plugin
-```
-
-These commands follow Docker's
-[Ubuntu installation guide](https://docs.docker.com/engine/install/ubuntu/).
-Allow your user to access the Docker daemon without `sudo`, then sign out and
-back in so the new group is applied:
-
-```bash
 sudo usermod -aG docker "$USER"
 ```
 
-Membership in the `docker` group grants root-level privileges. Review Docker's
-[Linux post-install guidance](https://docs.docker.com/engine/install/linux-postinstall/)
-before using this on a shared system. In a new login session, verify both
-commands:
+Sign out and back in after adding the group. Membership in the `docker` group
+grants root-level privileges; review Docker's
+[Linux post-install guidance](https://docs.docker.com/engine/install/linux-postinstall/).
+Then verify:
 
 ```bash
 docker info
 docker compose version
 ```
+
+These steps follow Docker's
+[Ubuntu installation guide](https://docs.docker.com/engine/install/ubuntu/).
 
 ### 3. Install NVIDIA Container Toolkit
 
@@ -136,28 +106,22 @@ sudo apt update
 sudo apt install -y nvidia-container-toolkit
 sudo nvidia-ctk runtime configure --runtime=docker
 sudo systemctl restart docker
-```
-
-This follows NVIDIA's
-[Container Toolkit installation guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html).
-Recheck Docker after the restart:
-
-```bash
 docker info
 ```
 
-Continue with [Node.js 24](#install-nodejs-24) and then
-[project setup](#project-setup-linux-and-wsl2).
+See NVIDIA's
+[Container Toolkit installation guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html).
+Continue with [Node.js 24](#install-nodejs-24).
 
 ## Windows with WSL2
 
-The application runs inside Ubuntu, not from PowerShell or Command Prompt.
-Windows owns the NVIDIA driver and Docker Desktop; Ubuntu owns the source tree,
-Node.js, pnpm, and the project commands.
+Run the application inside Ubuntu, not PowerShell. Windows owns the NVIDIA
+driver and Docker Desktop; Ubuntu owns the checkout, Node.js, pnpm, and project
+commands.
 
-### 1. Install or update WSL2
+### 1. Install Ubuntu 24.04 on WSL2
 
-Open **PowerShell as Administrator** and run:
+Open **PowerShell as Administrator**:
 
 ```powershell
 wsl --list --online
@@ -167,21 +131,14 @@ wsl --set-default-version 2
 wsl --list --verbose
 ```
 
-Restart Windows if prompted, open Ubuntu, and create the requested Linux user.
-The Ubuntu row printed by `wsl --list --verbose` must show version `2`. See
-[Microsoft's WSL installation guide](https://learn.microsoft.com/windows/wsl/install).
+Restart if prompted. The Ubuntu row must show version `2`. See Microsoft's
+[WSL installation guide](https://learn.microsoft.com/windows/wsl/install).
 
 ### 2. Install the Windows NVIDIA driver
 
-Install a current NVIDIA Windows driver with WSL2 CUDA support, then restart
-Windows. NVIDIA's [CUDA on WSL guide](https://docs.nvidia.com/cuda/wsl-user-guide/)
-is authoritative for supported drivers.
-
-Do **not** install an NVIDIA Linux display driver or CUDA driver package inside
-Ubuntu. WSL2 exposes the Windows driver to Linux, and a Linux driver can replace
-or break that integration.
-
-In the Ubuntu shell, verify:
+Install a current NVIDIA Windows driver with WSL2 CUDA support and restart
+Windows. Follow NVIDIA's [CUDA on WSL guide](https://docs.nvidia.com/cuda/wsl-user-guide/).
+Do not install a Linux NVIDIA display driver inside Ubuntu. Verify in Ubuntu:
 
 ```bash
 nvidia-smi
@@ -190,16 +147,12 @@ nvidia-smi
 ### 3. Install and enable Docker Desktop
 
 1. Install [Docker Desktop for Windows](https://docs.docker.com/desktop/setup/install/windows-install/).
-2. Open Docker Desktop and select **Settings → General → Use the WSL 2 based engine**.
-3. Select **Settings → Resources → WSL Integration**, enable Ubuntu 24.04, and apply the change.
+2. Enable **Use the WSL 2 based engine**.
+3. Under **Resources → WSL Integration**, enable Ubuntu 24.04.
 4. Keep Docker Desktop running while using Chess Llama.
 
-Do not install Docker Engine or NVIDIA Container Toolkit inside the Ubuntu
-distribution; Docker Desktop supplies both Docker access and GPU integration.
-Docker documents this arrangement in its
-[WSL2 backend guide](https://docs.docker.com/desktop/features/wsl/).
-
-Verify from the Ubuntu shell, not PowerShell:
+Do not install Docker Engine or NVIDIA Container Toolkit inside Ubuntu; Docker
+Desktop supplies them. In the Ubuntu shell, verify:
 
 ```bash
 docker info
@@ -208,33 +161,59 @@ docker compose version
 
 ### 4. Install Ubuntu command-line tools
 
-In the Ubuntu shell, run:
-
 ```bash
 sudo apt update
 sudo apt install -y \
-  ca-certificates \
-  curl \
-  git \
-  build-essential \
-  python3 \
-  util-linux \
-  iproute2 \
-  coreutils
+  ca-certificates curl git build-essential python3 util-linux
 ```
 
-Keep the checkout in the WSL filesystem for reliable permissions and faster
-file access. For example, use `~/src/labs-chess-llama`, not a path below
-`/mnt/c`.
+Keep the checkout in the WSL filesystem, such as
+`~/src/labs-chess-llama`, rather than below `/mnt/c`. Continue with
+[Node.js 24](#install-nodejs-24), running all remaining commands in Ubuntu.
 
-Continue with [Node.js 24](#install-nodejs-24) and then
-[project setup](#project-setup-linux-and-wsl2), running every command in the
-Ubuntu shell.
+## Apple Silicon macOS
+
+Apple Silicon development uses the native `llama-server` installed by
+Homebrew. llama.cpp uses Metal for GPU acceleration; Docker Desktop is not
+needed for `./chess-llama dev` and cannot run the CUDA Compose deployment.
+Intel Macs are not supported.
+
+### 1. Install Apple tools, Homebrew, Bash, and llama.cpp
+
+```bash
+xcode-select --install
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+eval "$(/opt/homebrew/bin/brew shellenv)"
+brew install bash git llama.cpp
+```
+
+Follow Homebrew's printed instruction to add `brew shellenv` permanently to
+your shell profile. The formula is intentionally not pinned because Homebrew
+maintains compatible Apple Silicon bottles; `doctor` verifies the executable's
+required capabilities. See the official
+[llama.cpp install guide](https://github.com/ggml-org/llama.cpp/blob/master/docs/install.md),
+[Metal build notes](https://github.com/ggml-org/llama.cpp/blob/master/docs/build.md#metal-build),
+and [Homebrew formula](https://formulae.brew.sh/formula/llama.cpp).
+
+### 2. Verify the native runtime
+
+```bash
+uname -m
+bash --version
+llama-server --help
+llama-server --list-devices
+```
+
+`uname -m` must print `arm64`, Bash must be version 5 or newer, and the device
+list must include a Metal device. Keep Homebrew's shell environment active so
+the `#!/usr/bin/env bash` launcher resolves Homebrew Bash instead of Apple's
+older `/bin/bash`.
+
+Continue with [Node.js 24](#install-nodejs-24).
 
 ## Install Node.js 24
 
-Use the same Node installation on Ubuntu, WSL2, and macOS. The nvm installer
-works on all three and keeps the project version separate from system packages:
+Use nvm on Ubuntu, WSL2, or macOS:
 
 ```bash
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.7/install.sh | bash
@@ -245,14 +224,12 @@ nvm alias default 24
 node --version
 ```
 
-The final command must print a `v24.x.x` version. Future terminals load nvm from
-the shell profile updated by its installer. The command is pinned to the
-[nvm project's published installer](https://github.com/nvm-sh/nvm#installing-and-updating).
+The last command must print `v24.x.x`. The command is pinned to nvm's
+[published installer](https://github.com/nvm-sh/nvm#installing-and-updating).
 
-## Project setup: Linux and WSL2
+## Project setup: all supported development hosts
 
-Run this sequence in a Bash shell after completing the Ubuntu or WSL2
-prerequisites:
+Run in Bash after completing the matching platform prerequisites:
 
 ```bash
 mkdir -p "$HOME/src"
@@ -270,95 +247,65 @@ pnpm build
 ./chess-llama dev
 ```
 
-If the repository is already cloned, start at its root and skip the clone
-commands. The first model pull builds the pinned llama image, downloads the
-GGUF, and verifies its SHA-256, so it can take several minutes.
-
-After `model pull`, `doctor` must report:
+If the repository is already cloned, start at its root. `model pull` downloads
+and verifies the GGUF on every platform. On Linux/WSL2 it also builds and pulls
+the pinned CUDA image; on macOS it uses the Homebrew `llama-server` already on
+the host. `doctor` must print:
 
 ```text
 Status: READY (all required checks passed)
 ```
 
-Model and backend health can still appear as runtime warnings before `dev`
-starts them. `dev` then starts or reuses the llama container, migrates SQLite,
-and starts the backend and Vite web server. Open <http://127.0.0.1:5173>.
-Press Ctrl-C once to stop resources started by that invocation; model weights
-and application data remain on disk.
-
-Run the production dependency audit separately when contributing or reviewing
-dependency changes; it is not a startup prerequisite:
-
-```bash
-pnpm audit --prod --audit-level high
-```
-
-## macOS source development
-
-macOS cannot run the CUDA llama container, so `./chess-llama dev`, `model`
-commands, and the complete Compose deployment are unsupported. This section is
-only for editing the source and running platform-neutral static checks.
-
-Install Apple's command-line tools and Homebrew, if needed:
-
-```bash
-xcode-select --install
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-eval "$(/opt/homebrew/bin/brew shellenv 2>/dev/null || /usr/local/bin/brew shellenv)"
-brew install bash coreutils git
-```
-
-Also follow Homebrew's printed instruction to make that shell configuration
-permanent. Then install Node.js 24 using the
-[nvm commands above](#install-nodejs-24), clone the repository, and run:
-
-```bash
-git clone https://github.com/kugtong33/labs-chess-llama.git
-cd labs-chess-llama
-corepack enable
-corepack prepare "$(node -p "require('./package.json').packageManager")" --activate
-pnpm install --frozen-lockfile
-pnpm build
-pnpm lint
-pnpm typecheck
-```
-
-Docker Desktop is optional for inspecting Compose configuration or building
-non-GPU images, but it does not make the full application runtime supported on
-macOS. Use Ubuntu 24.04 with NVIDIA hardware, or Windows with WSL2 and NVIDIA
-hardware, to run the complete game.
+Open <http://127.0.0.1:5173>. Ctrl-C stops resources started by that invocation
+while preserving models, games, and settings.
 
 ## What `doctor` checks
 
-`./chess-llama doctor --format human` is the readiness contract used by
-`./chess-llama dev`. It checks:
+All platforms check Bash 5, Node.js 24, the package.json pnpm version, curl,
+writable data paths, the selected model checksum, ports, migrations, and
+service health.
 
-- Bash 5, Node.js 24, and the exact pnpm version declared in `package.json`.
-- Docker daemon access and the Docker Compose plugin.
-- `curl`, `flock`, `script`, `setsid`, `sha256sum`, and `ss`.
-- GPU access from the exact pinned llama container image.
-- Writable config, database, backup, benchmark, and model directories.
-- The selected model file and its checksum.
+- Linux/WSL2 additionally checks Docker, Compose, `flock`, the pinned CUDA
+  image, and NVIDIA GPU access from that image.
+- Apple Silicon checks `arm64`, `llama-server`, required server options, and a
+  Metal device reported by `llama-server --list-devices`.
 
-It also reports ports, migration state, and running service health without
-making those pre-start runtime observations block readiness.
+Pre-start model and backend health may appear as non-blocking warnings.
+
+## Real-hardware acceptance
+
+GitHub-hosted CI checks macOS packaging and the native lifecycle with fakes; it
+does not qualify real Metal inference. On the target machine, complete this
+once after setup:
+
+```bash
+./chess-llama model status --format json
+curl -fsS http://127.0.0.1:3001/api/health
+./chess-llama model benchmark --profile qwen3-4b-q4-k-m --format human
+```
+
+Run the first two commands while `dev` is active in another terminal. On
+Apple Silicon, model status should report provider `native-metal` and runtime
+state `running`; backend health should report backend `Metal`. Open the browser,
+play one legal move, and confirm that the AI replies with commentary. Linux and
+WSL2 should report provider `docker-cuda` and backend `CUDA`.
 
 ## Troubleshooting setup
 
 - **Docker permission denied on Ubuntu:** sign out and back in after adding the
-  user to the `docker` group, then rerun `docker info` without `sudo`.
-- **Docker unavailable inside WSL2:** start Docker Desktop and enable WSL
-  integration for the exact Ubuntu distribution shown by `wsl --list --verbose`.
-- **GPU check fails on Ubuntu:** make `nvidia-smi` work on the host first, then
-  rerun the Container Toolkit configuration and restart Docker.
-- **GPU check fails on WSL2:** update the Windows NVIDIA driver and WSL kernel;
-  do not install a Linux NVIDIA driver in Ubuntu.
-- **A model download was interrupted:** rerun `./chess-llama model pull`; a
-  partial or corrupt file is never activated as the current model.
-- **A required check remains red:** follow the numbered remedy printed by
-  `doctor`, then rerun it before starting `dev`.
-- **Startup fails after readiness passed:** run `./chess-llama --verbose dev`
-  and inspect `./chess-llama model logs`.
+  Docker group, then run `docker info` without `sudo`.
+- **Docker unavailable in WSL2:** start Docker Desktop and enable integration
+  for the exact Ubuntu distribution shown by `wsl --list --verbose`.
+- **CUDA GPU check fails:** make `nvidia-smi` work first, then revisit the
+  platform-specific Docker/NVIDIA steps.
+- **Metal is absent from `llama-server --list-devices`:** confirm the machine is
+  `arm64`, update the Homebrew formula, and rerun `brew reinstall llama.cpp`.
+- **Intel Mac is rejected:** use an Apple Silicon Mac or the supported
+  Linux/WSL2 NVIDIA path; Rosetta does not provide the supported Metal runtime.
+- **A model download was interrupted:** rerun `./chess-llama model pull`; an
+  incomplete or corrupt file is never activated.
+- **Startup fails:** run `./chess-llama --verbose dev` and inspect
+  `./chess-llama model logs`.
 
-For service lifecycle and data paths, see [operations](operations.md). For the
-four-container deployment, see [Compose deployment](deployment.md).
+See [operations](operations.md) for lifecycle and data paths, and
+[Compose deployment](deployment.md) for the four-container Linux/WSL2 runtime.

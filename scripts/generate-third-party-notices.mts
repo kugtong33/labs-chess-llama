@@ -30,7 +30,7 @@ const lines = [
   '',
   '| Component | License | Source | Distribution note |',
   '| --- | --- | --- | --- |',
-  '| llama.cpp CUDA server | MIT | [ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | Pulled as the immutable container digest recorded in `config/runtime-manifest.json`. |',
+  '| llama.cpp server (Docker CUDA / Homebrew Metal) | MIT | [ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) | The Linux/WSL2 image is pulled by immutable digest; the macOS executable is installed by Homebrew and is not redistributed here. |',
   '| Qwen3-4B GGUF weights | Apache-2.0 | [Qwen/Qwen3-4B-GGUF](https://huggingface.co/Qwen/Qwen3-4B-GGUF) | Downloaded on demand; not stored in this repository. |',
   '| Qwen3-1.7B GGUF weights | Apache-2.0 | [ggml-org/Qwen3-1.7B-GGUF](https://huggingface.co/ggml-org/Qwen3-1.7B-GGUF) | Experimental profile downloaded on demand; not stored in this repository. |',
   '| chess.js | BSD-2-Clause | [jhlywa/chess.js](https://github.com/jhlywa/chess.js) | Authoritative chess rules and notation. |',

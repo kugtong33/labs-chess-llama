@@ -19,9 +19,9 @@ Container Toolkit, or Windows with Ubuntu 24.04 on WSL2 and Docker Desktop's
 WSL integration. Both require a supported NVIDIA GPU and a working
 `nvidia-smi` check.
 
-macOS can build or inspect parts of the repository but cannot run this CUDA
-deployment. The setup guide is the canonical source for platform installation
-commands and Docker/NVIDIA verification.
+The Compose deployment is Linux/WSL2-only. Apple Silicon macOS supports the
+native Metal development runtime, but not this CUDA deployment. The setup guide
+is the canonical source for platform installation commands and verification.
 
 ## Configuration
 
@@ -91,13 +91,15 @@ docker compose down -v
 
 ## Native development mode
 
-`./chess-llama dev` runs Vite and the backend directly on the Linux or WSL2
-host and runs only llama.cpp in Docker; Nginx is not part of that topology. The
-Compose deployment instead runs all four services in Docker and exposes only
-Nginx. Do not run both modes together: they compete for port `5173` and the
-local GPU, and they keep separate SQLite/model state. See the
-[setup guide](setup.md#project-setup-linux-and-wsl2) for the native first-run
-sequence.
+`./chess-llama dev` runs Vite and backend directly on the host. Linux/WSL2 runs
+llama.cpp in Docker with CUDA; Apple Silicon runs the Homebrew `llama-server`
+directly with Metal. Nginx is not part of either development topology.
+
+Compose instead runs all four services in Docker and exposes only Nginx. On
+Linux/WSL2, do not run Compose beside `dev`: they compete for port `5173` and
+the local GPU, and they keep separate SQLite/model state. See the
+[setup guide](setup.md#project-setup-all-supported-development-hosts) for the
+development first-run sequence.
 
 ## Real-GPU acceptance smoke
 

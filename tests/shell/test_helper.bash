@@ -61,6 +61,15 @@ assert_trace_contains() {
   grep -F -- "$1" "$CHESS_LLAMA_TEST_TRACE"
 }
 
+test_sha256() {
+  "$TEST_NODE" --input-type=module -e '
+    import { createHash } from "node:crypto";
+    let value = Buffer.alloc(0);
+    for await (const chunk of process.stdin) value = Buffer.concat([value, chunk]);
+    process.stdout.write(createHash("sha256").update(value).digest("hex"));
+  '
+}
+
 assert_json_equals() {
   JSON_ACTUAL=$1 JSON_EXPECTED=$2 node --input-type=module -e '
     import assert from "node:assert/strict";

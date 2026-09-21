@@ -4,7 +4,12 @@ Run commands as `./chess-llama ...` from a source checkout. `pnpm chess-llama --
 
 ## Service lifecycle
 
-`./chess-llama dev` checks prerequisites, migrates SQLite, starts the selected llama.cpp profile in Docker if needed, then starts the backend and Vite web application directly on the Linux or WSL2 host. Nginx is not part of development mode. The command supervises and stops only resources it started. Ctrl-C or SIGTERM performs an orderly shutdown; model weights and persisted data remain.
+`./chess-llama dev` checks prerequisites, migrates SQLite, starts the selected
+llama.cpp profile if needed, then starts backend and Vite directly on the host.
+Linux/WSL2 selects the Docker/CUDA provider; Apple Silicon selects the native
+Homebrew/Metal provider. Nginx is not part of development mode. The command
+supervises and stops only resources it started. Ctrl-C or SIGTERM performs an
+orderly shutdown; model weights and persisted data remain.
 
 Default loopback services are:
 
@@ -53,18 +58,18 @@ docker compose up --build -d
 | Command | Behavior |
 | --- | --- |
 | `dev` | Start and supervise the complete development stack. |
-| `doctor [--format json\|human]` | Check Node/pnpm, Docker/Compose, util-linux (`setsid` and `script`), cached CUDA image GPU access, paths, ports, migration state, installed-model checksum, and service health. |
+| `doctor [--format json\|human]` | Check shared tools, paths, ports, migrations, model checksum, and service health, plus Docker/CUDA on Linux or llama-server/Metal on Apple Silicon. |
 | `web dev` | Start only the loopback Vite development server. |
 | `web build` | Build the production browser bundle. |
 | `web serve` | Preview the built browser bundle on loopback. |
 | `backend dev` | Run the TypeScript backend with the resolved XDG database. |
 | `backend start` | Run the built backend with the resolved XDG database. Build first. |
 | `backend health [--format json\|human]` | Query `GET /api/health`. |
-| `model pull [--profile ID]` | Build the pinned llama service image, download the profile, and verify its SHA-256. |
-| `model start [--profile ID]` | Verify weights, recreate the model container, wait for health, and verify the loaded filename. |
-| `model stop` | Stop and remove only the managed model container; preserve weights. |
-| `model status [--format json\|human]` | Report container, health, model/profile, and port state. |
-| `model logs` | Report llama.cpp container logs in the established JSON result envelope and preserve Compose's failing exit status. |
+| `model pull [--profile ID]` | Download the profile and verify its SHA-256; Linux/WSL2 also prepares the pinned CUDA image. |
+| `model start [--profile ID]` | Verify weights, start the selected runtime provider, wait for health, and verify the loaded model identity. |
+| `model stop` | Stop only the managed model runtime and preserve weights. |
+| `model status [--format json\|human]` | Report provider, runtime state, health, model/profile, and port. |
+| `model logs` | Report the selected llama.cpp provider's operational logs. |
 | `model benchmark [--profile ID ...] [--format json\|human]` | Verify, start, and identity-check each installed profile; qualify it; and save a JSON report. |
 | `db migrate` | Apply checked-in SQLite migrations. |
 | `db status [--format json\|human]` | Report current/expected versions and pending state. |
@@ -93,7 +98,10 @@ CHESS_LLAMA_LOG_LEVEL=debug ./chess-llama doctor --format json
 
 `CHESS_LLAMA_LOG_LEVEL=debug` is equivalent to `--verbose` and is useful in scripts. Report commands keep routine progress quiet unless debug logging is enabled. Their JSON or human result remains on standard output; lifecycle and error context use standard error, so redirection and pipelines remain reliable. Debug rendering removes URL credentials, queries, fragments, and secret-like argument values.
 
-Log markers use color only when standard error is an eligible terminal. Set `NO_COLOR` or `TERM=dumb`, or redirect standard error, for plain text. The CLI does not persist or rotate lifecycle logs; native Vite, Node, Docker, and curl streams remain unchanged.
+Log markers use color only when standard error is an eligible terminal. Set
+`NO_COLOR` or `TERM=dumb`, or redirect standard error, for plain text. Docker,
+Vite, backend, and curl streams remain unchanged. The native Metal provider
+persists llama-server output in the state directory shown below.
 
 ## Decision-trace teaching view
 
@@ -120,9 +128,16 @@ operational output.
 | Backups | `${XDG_DATA_HOME:-~/.local/share}/chess-llama/backups/` | `CHESS_LLAMA_BACKUPS_DIR` |
 | Benchmark reports | `${XDG_DATA_HOME:-~/.local/share}/chess-llama/benchmarks/` | `CHESS_LLAMA_BENCHMARKS_DIR` |
 | Model weights | `${XDG_CACHE_HOME:-~/.cache}/chess-llama/models/` | `CHESS_LLAMA_MODEL_DIR` |
+| Native runtime state and logs | `${XDG_STATE_HOME:-~/.local/state}/chess-llama/` | `CHESS_LLAMA_STATE_DIR` |
 | Compose file | `<repository>/compose.yaml` | `CHESS_LLAMA_COMPOSE_FILE` |
 
 Overrides must be absolute paths; a relative override is ignored in favor of the default. User-facing theme, orientation, commentary style, Stockfish limits, and preferred model profile are stored in SQLite. The config-file location is reserved for operational configuration; this MVP's active path overrides are environment variables.
+
+On Apple Silicon, `runtime.json` records ownership and process identity and
+`llama-server.log` contains native server output. `model stop` signals a process
+only when that identity still matches. A healthy llama-server that the CLI did
+not start is reported as `external`, can be reused by `dev`, and is never
+stopped by Chess Llama.
 
 ## Backup and restore
 
@@ -145,7 +160,8 @@ SQLite `-wal` and `-shm` sidecars must not be copied from a live database. The o
 
 ## Changing or restarting models
 
-Changing the preferred profile requires a restart because the llama.cpp container loads one GGUF at startup:
+Changing the preferred profile requires a restart because the llama.cpp
+runtime loads one GGUF at startup:
 
 ```bash
 ./chess-llama model pull --profile qwen3-1.7b-q4-k-m
@@ -159,18 +175,25 @@ The 1.7B profile remains experimental even if it starts successfully; promote it
 
 ## Troubleshooting
 
-- `doctor` says Docker is unavailable: start Docker Engine/Desktop and verify `docker info` and `docker compose version` from the same Linux or WSL2 shell. Revisit the matching section of the [setup guide](setup.md) if either fails.
-- GPU check fails: verify `nvidia-smi` first, then follow the platform-specific Docker/NVIDIA remediation in the [setup guide](setup.md). Do not install a Linux NVIDIA driver inside WSL2.
+- Linux/WSL2 `doctor` says Docker is unavailable: start Docker Engine/Desktop
+  and verify `docker info` and `docker compose version` from the same shell.
+- The CUDA check fails: verify `nvidia-smi`, then follow the Docker/NVIDIA
+  remediation in the [setup guide](setup.md). Do not install a Linux NVIDIA
+  driver inside WSL2.
+- Apple Silicon `doctor` cannot find Metal: verify `uname -m` is `arm64`, then
+  run `brew reinstall llama.cpp` and `llama-server --list-devices`.
 - GPU check reports a missing image: run `model pull`; `doctor` uses `--pull never` by design.
 - Port 5173, 3001, or 8080 is in use: stop the owning local process/container. Do not expose an alternate public bind as a shortcut.
 - Model start times out: inspect `model logs`, confirm the profile checksum with `doctor`, check GPU memory/driver errors, and retry `model stop` then `model start`.
-- Model filename mismatch: stop the container and start the intended explicit profile. The CLI refuses to accept a healthy server carrying the wrong model.
+- Model identity mismatch: stop the managed runtime and start the intended
+  explicit profile. The CLI refuses to accept a healthy server carrying the
+  wrong model.
 - Backend reports pending migration/storage failure: stop standalone backends, run `db status`, take a backup, then run `db migrate`.
 - WSL2 cannot reach the UI: open `http://127.0.0.1:5173` from Windows; confirm the Vite process is still running inside the intended distro and that no VPN/security product blocks localhost forwarding.
 
 ## Local teardown
 
-First stop managed processes and the container:
+First stop the managed model runtime:
 
 ```bash
 ./chess-llama model stop

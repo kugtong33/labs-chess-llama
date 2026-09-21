@@ -10,7 +10,15 @@ Install the selected model, then run:
 ./chess-llama model benchmark --profile qwen3-4b-q4-k-m --format human
 ```
 
-Repeat `--profile` to qualify multiple installed profiles in one run. Before each profile, the command verifies the installed GGUF checksum, starts or recreates the managed llama.cpp container for that profile, and confirms `/v1/models` reports the exact expected filename. JSON format is available for tooling. A timestamped report is written to `${XDG_DATA_HOME:-~/.local/share}/chess-llama/benchmarks/` (or `CHESS_LLAMA_BENCHMARKS_DIR`). Missing or corrupt weights exit `3`, a loaded-model mismatch exits `5`, and a completed but failed qualification exits `1`.
+Repeat `--profile` to qualify multiple installed profiles in one run. Before
+each profile, the command verifies the installed GGUF checksum, starts the
+managed llama.cpp provider for that profile, and confirms `/v1/models` reports
+either the expected filename or profile alias. Linux/WSL2 uses CUDA; Apple
+Silicon uses Metal. JSON format is available for tooling. A timestamped report
+is written to `${XDG_DATA_HOME:-~/.local/share}/chess-llama/benchmarks/` (or
+`CHESS_LLAMA_BENCHMARKS_DIR`). Missing or corrupt weights exit `3`, a
+loaded-model mismatch exits `5`, and a completed but failed qualification exits
+`1`.
 
 Each committed position is analyzed sequentially through the same Stockfish.js and llama.cpp adapters used in gameplay. The suite covers opening positions, castling, en passant, promotion, forced mate, a rook endgame, and positional play. Sequential execution avoids counting queue delay from artificial concurrent requests against a one-slot llama.cpp server.
 
@@ -23,7 +31,13 @@ A profile prints `PASS` only when all four conditions hold:
 3. Success after the adapter's one bounded retry is exactly 100%.
 4. Median end-to-end llama.cpp selection latency is below 3000 ms.
 
-With the current eight-position fixture, the 95% first-attempt threshold effectively requires all eight first attempts to succeed. Reports include each profile's immutable repository, revision, filename, SHA-256, quantization, and context size together with the runtime image identity, host CPU/memory summary, candidate UCIs, choice, commentary, latency, prompt/completion token counts, tokens per second, retry count, and errors. The report deliberately marks the accelerator as `not-probed-by-benchmark`; use `doctor` to record the actual Docker/CUDA environment alongside the report.
+With the current eight-position fixture, the 95% first-attempt threshold
+effectively requires all eight first attempts to succeed. Reports include each
+profile's immutable repository, revision, filename, SHA-256, quantization, and
+context size together with provider and accelerator (`CUDA` or `Metal`), host
+CPU/memory summary, candidate UCIs, choice, commentary, latency,
+prompt/completion token counts, tokens per second, retry count, and errors.
+Preserve the matching `doctor` output with the report when qualifying hardware.
 
 ## Required human commentary review
 
@@ -40,6 +54,15 @@ Use `PASS`, `FAIL`, or `NEEDS FOLLOW-UP` for each line and preserve the complete
 
 ## Profile policy
 
-`qwen3-4b-q4-k-m` remains the recommended default for the RTX 4060 until a later profile demonstrates a better quality/resource tradeoff. `qwen3-1.7b-q4-k-m` is experimental. It may become the default only after independently passing every automated gate and the human checklist on target hardware; merely producing legal JSON is not enough.
+`qwen3-4b-q4-k-m` remains the recommended default for the RTX 4060 and Apple
+Silicon machines with at least 16 GB unified memory until another profile
+demonstrates a better quality/resource tradeoff. `qwen3-1.7b-q4-k-m` is
+experimental. It may become the default only after independently passing every
+automated gate and the human checklist on each target accelerator; merely
+producing legal JSON is not enough.
 
-Normal CI does not run this hardware benchmark. CI exercises aggregation, CLI exit behavior, real protocol translation against a deterministic fake server, browser recovery, and SQLite persistence without Docker, GPU, model weights, or downloads.
+Normal CI does not run this hardware benchmark. CI exercises aggregation, CLI
+exit behavior, protocol translation against a deterministic fake server,
+browser recovery, and SQLite persistence without GPU, model weights, or
+downloads. Run the benchmark and browser smoke test on real NVIDIA and Apple
+Silicon hardware before making performance or compatibility claims.

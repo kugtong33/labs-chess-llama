@@ -10,7 +10,7 @@ manage the local model
 
 Commands:
   benchmark          qualify installed model profiles
-  logs               show llama.cpp container logs
+  logs               show llama.cpp runtime logs
   pull               download and verify model weights
   start              start and qualify llama.cpp
   status             report llama.cpp status

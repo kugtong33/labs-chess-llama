@@ -122,6 +122,64 @@ jobs:
         run: |
           echo "images=$(node scripts/container-images.mjs)" >> "$GITHUB_OUTPUT"
 
+  verify-macos:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install Apple Silicon prerequisites
+        run: |
+          test "$(uname -m)" = arm64
+          brew install bash llama.cpp shellcheck shfmt
+          bash --version
+          llama-server --help >/dev/null
+
+      - name: Enable pinned pnpm with Corepack
+        run: |
+          corepack enable
+          package_manager="$(node -p "JSON.parse(require('node:fs').readFileSync('package.json', 'utf8')).packageManager")"
+          corepack prepare "$package_manager" --activate
+          echo "PNPM_STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.PNPM_STORE_PATH }}
+          key: ${{ runner.os }}-arm64-node24-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-arm64-node24-pnpm-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check formatting
+        run: pnpm format:check
+
+      - name: Check Bash formatting
+        run: shfmt -d -i 2 -ci chess-llama scripts/cli tests/shell
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Lint Bash
+        run: shellcheck chess-llama scripts/cli/*.sh tests/shell/*.bash tests/shell/*.bats
+
+      - name: Type-check
+        run: pnpm typecheck
+
+      - name: Run portable and native-provider tests
+        run: pnpm test:macos
+
+      - name: Build production bundles
+        run: pnpm build
+
   container-security:
     needs: prepare-runtime-images
     runs-on: ubuntu-24.04
