@@ -375,3 +375,41 @@ test('paginates expanded technical events and long error details without scrolli
   ).toBeFocused();
   await expectFits(page);
 });
+
+test('retains the original home layout when entering and leaving a game', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await openFixture(page, game({ currentFen: startingFen }));
+  await expectFits(page);
+  await expect(page.getByRole('contentinfo')).toBeHidden();
+
+  await page.getByRole('link', { name: 'chess-llama home' }).click();
+  await expect(
+    page.getByRole('heading', {
+      name: 'Play chess with a local language model.',
+    }),
+  ).toBeVisible();
+  await expect(page.getByRole('contentinfo')).toBeVisible();
+  const home = await page.evaluate(() => ({
+    headingSize: Number.parseFloat(
+      getComputedStyle(document.querySelector('h1')!).fontSize,
+    ),
+    width: document.querySelector('.app-shell')!.getBoundingClientRect().width,
+    scrollable: getComputedStyle(document.documentElement).overflowY,
+  }));
+  expect(home.width).toBe(1180);
+  expect(home.headingSize).toBeGreaterThan(100);
+  expect(['hidden', 'clip']).not.toContain(home.scrollable);
+
+  await page.goBack();
+  await expectFits(page);
+  await expectNoScroll(page);
+  await expect(page.getByRole('contentinfo')).toBeHidden();
+
+  await page.getByRole('link', { name: 'chess-llama home' }).click();
+  await page.setViewportSize({ width: 390, height: 568 });
+  await page.getByRole('contentinfo').scrollIntoViewIfNeeded();
+  await expect(page.getByRole('contentinfo')).toBeInViewport();
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+});

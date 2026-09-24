@@ -838,7 +838,7 @@ footer {
   }
 }
 
-/* The play routes are an application viewport; other routes remain documents. */
+/* Only game routes use an application viewport; the home page and other routes remain documents. */
 .play-shell {
   width: calc(100% - clamp(0.75rem, 3vw, 3rem));
   height: 100vh;
@@ -870,23 +870,6 @@ footer {
   min-height: 0;
   padding: 0.5rem 0;
   align-items: stretch;
-}
-.play-shell .hero {
-  align-self: center;
-}
-.play-shell .hero h1 {
-  font-size: clamp(1.7rem, min(6vw, 8vh), 4.5rem);
-}
-.play-shell .hero-copy {
-  margin: 1rem 0;
-  font-size: 1rem;
-  line-height: 1.4;
-}
-.play-shell .hero .eyebrow {
-  margin-bottom: 0.7rem;
-}
-.play-shell .hero-disclosure {
-  margin: 0.65rem 0 0;
 }
 
 .play-workspace {
@@ -1134,22 +1117,6 @@ footer {
   }
   .play-workspace {
     gap: 0.3rem;
-  }
-  .play-shell .hero h1 {
-    max-width: 28ch;
-    font-size: 1.5rem;
-  }
-  .play-shell .hero .eyebrow,
-  .play-shell .hero-disclosure {
-    display: none;
-  }
-  .play-shell .hero-copy {
-    margin: 0.5rem 0;
-    font-size: 0.8rem;
-  }
-  .play-shell .hero .button.large {
-    min-height: 2.5rem;
-    padding-block: 0.4rem;
   }
 }
 

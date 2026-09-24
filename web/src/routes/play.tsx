@@ -230,7 +230,6 @@ export function PlayRoute() {
           explains.
         </p>
         <ProblemBanner
-          compact
           error={failure}
           onReconnect={() => {
             void health.refetch();
