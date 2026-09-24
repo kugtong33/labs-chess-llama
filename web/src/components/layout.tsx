@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 
 import { useSettings } from '../api/queries.js';
 import { RuntimeStatus } from './runtime-status.js';
@@ -12,6 +12,8 @@ const navigation = [
 
 export function Layout() {
   const settings = useSettings();
+  const { pathname } = useLocation();
+  const isPlay = pathname === '/' || pathname.startsWith('/games/');
 
   useEffect(() => {
     const theme = settings.data?.theme;
@@ -26,7 +28,7 @@ export function Layout() {
   }, [settings.data?.theme]);
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${isPlay ? ' play-shell' : ''}`}>
       <a className="skip-link" href="#main-content">
         Skip to main content
       </a>

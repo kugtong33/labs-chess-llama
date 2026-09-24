@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { GameView, Promotion, Square } from '@chess-llama/contracts';
 
@@ -15,6 +15,7 @@ import {
 import { AiCommentary } from '../components/ai-commentary.js';
 import { DecisionPipeline } from '../components/decision-pipeline.js';
 import { useDecisionEvents } from '../api/decision-events.js';
+import { GameDetails } from '../components/game-details.js';
 import { GameActions } from '../components/game-actions.js';
 import { GameBoard } from '../components/game-board.js';
 import { MoveList } from '../components/move-list.js';
@@ -35,11 +36,74 @@ export function PlayRoute() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const abortable = useAbortScope();
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailTab, setDetailTab] = useState<'Moves' | 'AI' | 'Pipeline'>('AI');
+  const workspace = useRef<HTMLElement>(null);
+  const focusAfterRender = useRef<'details' | 'back' | 'ai' | null>(null);
+  const lastFocused = useRef<HTMLElement | null>(null);
+  const detailsButton = useRef<HTMLButtonElement>(null);
+  const backButton = useRef<HTMLButtonElement>(null);
   const [failure, setFailure] = useState<unknown>();
   const [announcement, setAnnouncement] = useState('');
   const [selectedDecisionId, setSelectedDecisionId] = useState<string | null>(
     null,
   );
+  useLayoutEffect(() => {
+    const target = focusAfterRender.current;
+    if (!target) return;
+    focusAfterRender.current = null;
+    if (target === 'back') backButton.current?.focus();
+    else if (target === 'details') detailsButton.current?.focus();
+    else
+      workspace.current
+        ?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')
+        ?.focus();
+  }, [detailsOpen, detailTab, selectedDecisionId]);
+
+  useEffect(() => {
+    setDetailsOpen(false);
+    setDetailTab('AI');
+    setSelectedDecisionId(null);
+  }, [id]);
+
+  useEffect(() => {
+    const compact = window.matchMedia?.(
+      '(max-width: 899px), (max-height: 599px)',
+    );
+    if (!compact?.addEventListener) return;
+    const rememberFocus = (event: FocusEvent) => {
+      if (event.target instanceof HTMLElement)
+        lastFocused.current = event.target;
+    };
+    const keepFocusVisible = () => {
+      const focused = lastFocused.current;
+      if (
+        !focused ||
+        !workspace.current?.contains(focused) ||
+        focused.getClientRects().length
+      )
+        return;
+      if (
+        document.activeElement !== document.body &&
+        document.activeElement !== focused
+      )
+        return;
+      if (compact.matches) {
+        (detailsOpen ? backButton.current : detailsButton.current)?.focus();
+      } else {
+        workspace.current
+          .querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')
+          ?.focus();
+      }
+    };
+    document.addEventListener('focusin', rememberFocus);
+    compact.addEventListener('change', keepFocusVisible);
+    return () => {
+      document.removeEventListener('focusin', rememberFocus);
+      compact.removeEventListener('change', keepFocusVisible);
+    };
+  }, [detailsOpen]);
+
   const modelStatus = health.data?.components.model.status;
   const modelReady = modelStatus === 'ready';
 
@@ -166,6 +230,7 @@ export function PlayRoute() {
           explains.
         </p>
         <ProblemBanner
+          compact
           error={failure}
           onReconnect={() => {
             void health.refetch();
@@ -179,6 +244,7 @@ export function PlayRoute() {
   if (!gameQuery.data) {
     return (
       <ProblemBanner
+        compact
         error={gameQuery.error ?? new Error('Game not found')}
         onReconnect={() => {
           void gameQuery.refetch();
@@ -208,10 +274,13 @@ export function PlayRoute() {
   const turnMessage = statusMessage(current, modelStatus, pending);
 
   return (
-    <section className="play-workspace" aria-labelledby="game-title">
+    <section
+      ref={workspace}
+      className={`play-workspace${detailsOpen ? ' details-open' : ''}`}
+      aria-labelledby="game-title"
+    >
       <div className="play-heading">
         <div>
-          <p className="eyebrow">Local match</p>
           <h1 id="game-title">Your game</h1>
         </div>
         <p className="turn-status" aria-live="polite">
@@ -221,25 +290,8 @@ export function PlayRoute() {
       <p className="visually-hidden" aria-live="polite">
         {announcement}
       </p>
-      <dl className="runtime-metadata" aria-label="Loaded AI runtime">
-        <div>
-          <dt>Model</dt>
-          <dd>{runtimeModel?.modelId ?? 'Unavailable'}</dd>
-        </div>
-        <div>
-          <dt>Profile</dt>
-          <dd>{runtimeModel?.profileId ?? current.modelProfileId}</dd>
-        </div>
-        <div>
-          <dt>Quantization</dt>
-          <dd>{runtimeModel?.quantization ?? '—'}</dd>
-        </div>
-        <div>
-          <dt>Backend</dt>
-          <dd>{runtimeModel?.backend ?? '—'}</dd>
-        </div>
-      </dl>
       <ProblemBanner
+        compact
         error={failure ?? gameQuery.error ?? health.error}
         onReconnect={() => {
           setFailure(undefined);
@@ -259,39 +311,97 @@ export function PlayRoute() {
           }}
         />
         <div className="game-sidebar">
-          <AiCommentary
-            decision={selectedDecision}
-            backend={runtimeModel?.backend}
-          />
-          <DecisionPipeline
-            events={decisionEvents.events}
-            decision={selectedDecision}
-            connection={decisionEvents.connection}
-            replay={replayingDecision}
-          />
-          <MoveList
-            moves={current.moves}
-            decisions={decisions}
-            selectedDecisionId={selectedDecision?.id}
-            onSelectDecision={(decision) => {
-              setSelectedDecisionId(decision.id);
-              setAnnouncement(
-                `Showing AI decision for move ${decision.chosenUci}.`,
-              );
+          <button
+            ref={backButton}
+            type="button"
+            className="button secondary back-to-game"
+            onClick={() => {
+              focusAfterRender.current = 'details';
+              setDetailsOpen(false);
             }}
+          >
+            Back to game
+          </button>
+          <GameDetails
+            key={current.id}
+            decisionId={selectedDecision?.id}
+            selectedTab={detailTab}
+            onSelectTab={setDetailTab}
+            ai={
+              <>
+                <AiCommentary
+                  decision={selectedDecision}
+                  backend={runtimeModel?.backend}
+                />
+                <dl className="runtime-metadata" aria-label="Loaded AI runtime">
+                  <div>
+                    <dt>Model</dt>
+                    <dd>{runtimeModel?.modelId ?? 'Unavailable'}</dd>
+                  </div>
+                  <div>
+                    <dt>Profile</dt>
+                    <dd>{runtimeModel?.profileId ?? current.modelProfileId}</dd>
+                  </div>
+                  <div>
+                    <dt>Quantization</dt>
+                    <dd>{runtimeModel?.quantization ?? '—'}</dd>
+                  </div>
+                  <div>
+                    <dt>Backend</dt>
+                    <dd>{runtimeModel?.backend ?? '—'}</dd>
+                  </div>
+                </dl>
+              </>
+            }
+            pipeline={
+              <DecisionPipeline
+                events={decisionEvents.events}
+                decision={selectedDecision}
+                connection={decisionEvents.connection}
+                replay={replayingDecision}
+              />
+            }
+            moves={
+              <MoveList
+                moves={current.moves}
+                decisions={decisions}
+                selectedDecisionId={selectedDecision?.id}
+                onSelectDecision={(decision) => {
+                  focusAfterRender.current = 'ai';
+                  setSelectedDecisionId(decision.id);
+                  setDetailTab('AI');
+                  setAnnouncement(
+                    `Showing AI decision for move ${decision.chosenUci}.`,
+                  );
+                }}
+              />
+            }
           />
         </div>
       </div>
-      <GameActions
-        canCreate={Boolean(settings.data) && modelReady}
-        canResign={current.status !== 'completed'}
-        canRetry={current.status === 'awaiting_ai' && modelReady}
-        pending={pending}
-        onNewGame={() => create.mutate()}
-        onResign={() => resign.mutate()}
-        onRetry={() => retryAi.mutate()}
-        onDownload={() => download.mutate()}
-      />
+      <div className="game-toolbar">
+        <button
+          ref={detailsButton}
+          type="button"
+          className="button secondary show-details"
+          onClick={() => {
+            focusAfterRender.current = 'back';
+            setDetailsOpen(true);
+          }}
+        >
+          Details
+        </button>
+        <GameActions
+          canCreate={Boolean(settings.data) && modelReady}
+          canResign={current.status !== 'completed'}
+          canRetry={current.status === 'awaiting_ai' && modelReady}
+          pending={pending}
+          onNewGame={() => create.mutate()}
+          onResign={() => resign.mutate()}
+          onRetry={() => retryAi.mutate()}
+          onDownload={() => download.mutate()}
+        />
+      </div>
     </section>
   );
 }

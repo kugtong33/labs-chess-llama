@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Chessboard } from 'react-chessboard';
+import { ViewportDialog } from './viewport-dialog.js';
 import type { Color, Promotion, Square } from '@chess-llama/contracts';
 
 interface PendingPromotion {
@@ -76,42 +77,47 @@ export function GameBoard({
         />
       </div>
       {promotion ? (
-        <div
-          className="promotion-picker"
-          role="group"
-          aria-label="Choose promotion"
+        <ViewportDialog
+          title="Choose promotion"
+          onClose={() => setPromotion(undefined)}
         >
-          {(
-            [
-              ['q', 'queen'],
-              ['r', 'rook'],
-              ['b', 'bishop'],
-              ['n', 'knight'],
-            ] as const
-          ).map(([piece, name]) => (
+          <div
+            className="promotion-picker"
+            role="group"
+            aria-label="Promotion pieces"
+          >
+            {(
+              [
+                ['q', 'queen'],
+                ['r', 'rook'],
+                ['b', 'bishop'],
+                ['n', 'knight'],
+              ] as const
+            ).map(([piece, name]) => (
+              <button
+                key={piece}
+                className="button secondary"
+                type="button"
+                disabled={disabled}
+                onClick={() => {
+                  if (disabled) return;
+                  onMove(promotion.from, promotion.to, piece);
+                  setPromotion(undefined);
+                }}
+              >
+                Promote to {name}
+              </button>
+            ))}
             <button
-              key={piece}
-              className="button secondary"
+              className="button ghost"
               type="button"
               disabled={disabled}
-              onClick={() => {
-                if (disabled) return;
-                onMove(promotion.from, promotion.to, piece);
-                setPromotion(undefined);
-              }}
+              onClick={() => setPromotion(undefined)}
             >
-              Promote to {name}
+              Cancel promotion
             </button>
-          ))}
-          <button
-            className="button ghost"
-            type="button"
-            disabled={disabled}
-            onClick={() => setPromotion(undefined)}
-          >
-            Cancel promotion
-          </button>
-        </div>
+          </div>
+        </ViewportDialog>
       ) : null}
     </div>
   );

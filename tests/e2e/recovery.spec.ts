@@ -19,9 +19,11 @@ test('recovers a saved human move without duplicating its ply', async ({
   expect(control.ok()).toBe(true);
 
   await drag(page, 'e2', 'e4');
-  await expect(page.getByRole('alert')).toContainText(
+  await page.getByRole('button', { name: 'Error details' }).click();
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText(
     'The request could not be completed.',
   );
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(
     page.getByRole('button', { name: 'Retry AI move' }),
   ).toBeVisible();

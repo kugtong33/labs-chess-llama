@@ -125,7 +125,11 @@ describe('Play route', () => {
       await screen.findByRole('button', { name: 'Retry AI move' }),
     );
 
+    await user.click(
+      await screen.findByRole('button', { name: 'Error details' }),
+    );
     expect(await screen.findByText(retryFailure.detail)).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Close' }));
     await user.click(screen.getByRole('button', { name: 'Retry AI move' }));
 
     expect(retryAiMove).toHaveBeenLastCalledWith(
@@ -373,6 +377,9 @@ describe('Play route', () => {
       await screen.findByRole('button', { name: 'Move e2 to e4' }),
     );
 
+    await user.click(
+      await screen.findByRole('button', { name: 'Error details' }),
+    );
     expect(await screen.findByText('Backend went offline')).toBeVisible();
     expect(screen.getByLabelText('Chessboard')).toBeVisible();
   });
