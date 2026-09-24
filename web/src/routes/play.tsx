@@ -211,30 +211,39 @@ export function PlayRoute() {
   if (!id) {
     return (
       <section className="hero" aria-labelledby="play-title">
-        <p className="eyebrow">Your machine. Your model. Your move.</p>
-        <h1 id="play-title">Play chess with a local language model.</h1>
-        <p className="hero-copy">
-          Stockfish finds credible candidates. llama.cpp chooses a move and
-          tells you why—without sending your game anywhere.
-        </p>
-        <button
-          className="button primary large"
-          type="button"
-          onClick={() => create.mutate()}
-          disabled={create.isPending || !settings.data || !modelReady}
+        <div
+          className="scroll-region hero-intro"
+          role="region"
+          aria-label="About this game"
+          tabIndex={0}
         >
-          {create.isPending ? 'Starting game…' : 'New Game'}
-        </button>
-        <p className="disclosure hero-disclosure">
-          Stockfish suggests candidates; Qwen via llama.cpp chooses and
-          explains.
-        </p>
-        <ProblemBanner
-          error={failure}
-          onReconnect={() => {
-            void health.refetch();
-          }}
-        />
+          <p className="eyebrow">Your machine. Your model. Your move.</p>
+          <h1 id="play-title">Play chess with a local language model.</h1>
+          <p className="hero-copy">
+            Stockfish finds credible candidates. llama.cpp chooses a move and
+            tells you why—without sending your game anywhere.
+          </p>
+          <ProblemBanner
+            error={failure}
+            onReconnect={() => {
+              void health.refetch();
+            }}
+          />
+        </div>
+        <div className="hero-actions">
+          <button
+            className="button primary large"
+            type="button"
+            onClick={() => create.mutate()}
+            disabled={create.isPending || !settings.data || !modelReady}
+          >
+            {create.isPending ? 'Starting game…' : 'New Game'}
+          </button>
+          <p className="disclosure hero-disclosure">
+            Stockfish suggests candidates; Qwen via llama.cpp chooses and
+            explains.
+          </p>
+        </div>
       </section>
     );
   }
@@ -297,109 +306,121 @@ export function PlayRoute() {
           void Promise.all([health.refetch(), gameQuery.refetch()]);
         }}
       />
-      <div className="game-grid">
-        <GameBoard
-          key={current.id}
-          fen={current.currentFen}
-          orientation={settings.data?.boardOrientation ?? current.humanColor}
-          humanColor={current.humanColor}
-          disabled={boardDisabled}
-          onMove={(from, to, promotion) => {
-            setFailure(undefined);
-            humanMove.mutate({ from, to, ...(promotion ? { promotion } : {}) });
-          }}
-        />
-        <div className="game-sidebar">
-          <button
-            ref={backButton}
-            type="button"
-            className="button secondary back-to-game"
-            onClick={() => {
-              focusAfterRender.current = 'details';
-              setDetailsOpen(false);
-            }}
-          >
-            Back to game
-          </button>
-          <GameDetails
+      <div className="game-stage">
+        <div className="game-grid">
+          <GameBoard
             key={current.id}
-            decisionId={selectedDecision?.id}
-            selectedTab={detailTab}
-            onSelectTab={setDetailTab}
-            ai={
-              <>
-                <AiCommentary
-                  decision={selectedDecision}
-                  backend={runtimeModel?.backend}
-                />
-                <dl className="runtime-metadata" aria-label="Loaded AI runtime">
-                  <div>
-                    <dt>Model</dt>
-                    <dd>{runtimeModel?.modelId ?? 'Unavailable'}</dd>
-                  </div>
-                  <div>
-                    <dt>Profile</dt>
-                    <dd>{runtimeModel?.profileId ?? current.modelProfileId}</dd>
-                  </div>
-                  <div>
-                    <dt>Quantization</dt>
-                    <dd>{runtimeModel?.quantization ?? '—'}</dd>
-                  </div>
-                  <div>
-                    <dt>Backend</dt>
-                    <dd>{runtimeModel?.backend ?? '—'}</dd>
-                  </div>
-                </dl>
-              </>
-            }
-            pipeline={
-              <DecisionPipeline
-                events={decisionEvents.events}
-                decision={selectedDecision}
-                connection={decisionEvents.connection}
-                replay={replayingDecision}
-              />
-            }
-            moves={
-              <MoveList
-                moves={current.moves}
-                decisions={decisions}
-                selectedDecisionId={selectedDecision?.id}
-                onSelectDecision={(decision) => {
-                  focusAfterRender.current = 'ai';
-                  setSelectedDecisionId(decision.id);
-                  setDetailTab('AI');
-                  setAnnouncement(
-                    `Showing AI decision for move ${decision.chosenUci}.`,
-                  );
-                }}
-              />
-            }
+            fen={current.currentFen}
+            orientation={settings.data?.boardOrientation ?? current.humanColor}
+            humanColor={current.humanColor}
+            disabled={boardDisabled}
+            onMove={(from, to, promotion) => {
+              setFailure(undefined);
+              humanMove.mutate({
+                from,
+                to,
+                ...(promotion ? { promotion } : {}),
+              });
+            }}
           />
+          <div className="game-sidebar">
+            <button
+              ref={backButton}
+              type="button"
+              className="button secondary back-to-game"
+              onClick={() => {
+                focusAfterRender.current = 'details';
+                setDetailsOpen(false);
+              }}
+            >
+              Back to game
+            </button>
+            <GameDetails
+              key={current.id}
+              decisionId={selectedDecision?.id}
+              selectedTab={detailTab}
+              onSelectTab={setDetailTab}
+              ai={
+                <>
+                  <AiCommentary
+                    decision={selectedDecision}
+                    backend={runtimeModel?.backend}
+                  />
+                  <dl
+                    className="runtime-metadata"
+                    aria-label="Loaded AI runtime"
+                  >
+                    <div>
+                      <dt>Model</dt>
+                      <dd>{runtimeModel?.modelId ?? 'Unavailable'}</dd>
+                    </div>
+                    <div>
+                      <dt>Profile</dt>
+                      <dd>
+                        {runtimeModel?.profileId ?? current.modelProfileId}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Quantization</dt>
+                      <dd>{runtimeModel?.quantization ?? '—'}</dd>
+                    </div>
+                    <div>
+                      <dt>Backend</dt>
+                      <dd>{runtimeModel?.backend ?? '—'}</dd>
+                    </div>
+                  </dl>
+                </>
+              }
+              pipeline={
+                <DecisionPipeline
+                  events={decisionEvents.events}
+                  decision={selectedDecision}
+                  connection={decisionEvents.connection}
+                  replay={replayingDecision}
+                />
+              }
+              moves={
+                <MoveList
+                  moves={current.moves}
+                  decisions={decisions}
+                  selectedDecisionId={selectedDecision?.id}
+                  onSelectDecision={(decision) => {
+                    focusAfterRender.current = 'ai';
+                    setSelectedDecisionId(decision.id);
+                    setDetailTab('AI');
+                    setAnnouncement(
+                      `Showing AI decision for move ${decision.chosenUci}.`,
+                    );
+                  }}
+                />
+              }
+            />
+          </div>
+          <div className="game-toolbar">
+            <GameActions
+              canCreate={Boolean(settings.data) && modelReady}
+              canResign={current.status !== 'completed'}
+              canRetry={current.status === 'awaiting_ai' && modelReady}
+              pending={pending}
+              onNewGame={() => create.mutate()}
+              onResign={() => resign.mutate()}
+              onRetry={() => retryAi.mutate()}
+              onDownload={() => download.mutate()}
+            >
+              <button
+                ref={detailsButton}
+                type="button"
+                className="button secondary show-details"
+                onClick={() => {
+                  focusAfterRender.current = 'back';
+                  setDetailsOpen(true);
+                }}
+              >
+                Details
+              </button>
+            </GameActions>
+          </div>
         </div>
-      </div>
-      <div className="game-toolbar">
-        <button
-          ref={detailsButton}
-          type="button"
-          className="button secondary show-details"
-          onClick={() => {
-            focusAfterRender.current = 'back';
-            setDetailsOpen(true);
-          }}
-        >
-          Details
-        </button>
-        <GameActions
-          canCreate={Boolean(settings.data) && modelReady}
-          canResign={current.status !== 'completed'}
-          canRetry={current.status === 'awaiting_ai' && modelReady}
-          pending={pending}
-          onNewGame={() => create.mutate()}
-          onResign={() => resign.mutate()}
-          onRetry={() => retryAi.mutate()}
-          onDownload={() => download.mutate()}
-        />
       </div>
     </section>
   );

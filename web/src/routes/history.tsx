@@ -24,12 +24,19 @@ export function HistoryRoute() {
     );
   if (games.isError) {
     return (
-      <ProblemBanner
-        error={games.error}
-        onReconnect={() => {
-          void games.refetch();
-        }}
-      />
+      <div
+        className="scroll-region route-feedback"
+        role="region"
+        aria-label="History error"
+        tabIndex={0}
+      >
+        <ProblemBanner
+          error={games.error}
+          onReconnect={() => {
+            void games.refetch();
+          }}
+        />
+      </div>
     );
   }
 
@@ -41,34 +48,43 @@ export function HistoryRoute() {
 
   return (
     <section className="collection-page" aria-labelledby="history-title">
-      <p className="eyebrow">SQLite archive</p>
-      <h1 id="history-title">History</h1>
-      <GameCollection
-        title="Resume"
-        games={resumable}
-        empty="No games in progress."
-        action={(game) => (
-          <Link className="button secondary" to={`/games/${game.id}`}>
-            Resume game
-          </Link>
-        )}
-      />
-      <GameCollection
-        title="Completed"
-        games={completed}
-        empty="Completed games will remain here across restarts."
-        action={(game) => (
-          <button
-            className="button ghost"
-            type="button"
-            disabled={download.isPending}
-            onClick={() => download.mutate(game.id)}
-          >
-            Download PGN
-          </button>
-        )}
-      />
-      <ProblemBanner error={download.error} />
+      <header className="page-heading">
+        <p className="eyebrow">SQLite archive</p>
+        <h1 id="history-title">History</h1>
+      </header>
+      <div
+        className="scroll-region archive-content"
+        role="region"
+        aria-label="Game archive"
+        tabIndex={0}
+      >
+        <GameCollection
+          title="Resume"
+          games={resumable}
+          empty="No games in progress."
+          action={(game) => (
+            <Link className="button secondary" to={`/games/${game.id}`}>
+              Resume game
+            </Link>
+          )}
+        />
+        <GameCollection
+          title="Completed"
+          games={completed}
+          empty="Completed games will remain here across restarts."
+          action={(game) => (
+            <button
+              className="button ghost"
+              type="button"
+              disabled={download.isPending}
+              onClick={() => download.mutate(game.id)}
+            >
+              Download PGN
+            </button>
+          )}
+        />
+        <ProblemBanner error={download.error} />
+      </div>
     </section>
   );
 }

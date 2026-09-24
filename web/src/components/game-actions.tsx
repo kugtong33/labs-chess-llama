@@ -1,4 +1,7 @@
+import type { ReactNode } from 'react';
+
 export interface GameActionsProps {
+  children?: ReactNode;
   canCreate: boolean;
   canResign: boolean;
   canRetry: boolean;
@@ -10,6 +13,7 @@ export interface GameActionsProps {
 }
 
 export function GameActions({
+  children,
   canCreate,
   canResign,
   canRetry,
@@ -20,7 +24,8 @@ export function GameActions({
   onDownload,
 }: GameActionsProps) {
   return (
-    <div className="game-actions" aria-label="Game actions">
+    <div className="game-actions" role="group" aria-label="Game actions">
+      {children}
       <button
         className="button primary"
         type="button"
